@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="DronePoint">
-<meta name="theme-color" content="#1D9E75">
+<meta name="theme-color" content="#000000">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -117,6 +117,12 @@ textarea.field-input { resize: vertical; }
 .btn-hub { background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 6px 10px; font-size: 12px; color: var(--text2); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .btn-hub:hover { background: var(--bg3); }
 .mission-delete-btn { background: none; border: none; cursor: pointer; color: #E24B4A; font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px 16px; }
+.photo-thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--bg3); cursor: pointer; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb .photo-del { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+.photo-add-btn { aspect-ratio: 1; border-radius: 8px; border: 1.5px dashed var(--border2); background: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--accent); font-size: 11px; font-family: inherit; }
+.photo-add-btn span { font-size: 22px; }
 .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px 16px 12px; }
 .photo-thumb { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--bg3); cursor: pointer; }
 .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -483,6 +489,8 @@ function renderLog(){
     <div class="field-group"><textarea class="field-input" id="f-notes" rows="3" onchange="uf('missionNotes')" placeholder="General notes, observations…">${m.missionNotes}</textarea></div>
   </div>
   <div class="btn-row"><button class="btn-secondary" onclick="saveDraft()">Save draft</button><button class="btn-primary" onclick="completeMission()">Mark complete</button></div>`;
+  // render photo grids after DOM is ready
+  m.flights.forEach((_,i)=>renderPhotoGrid(i));
 }
 
 function renderFlightCard(f,i){
@@ -500,6 +508,12 @@ function renderFlightCard(f,i){
       </div>
       <div style="padding:0 16px 12px"><div class="field-label">Battery level at landing (%)</div><input type="number" class="field-input" value="${f.battery||''}" onchange="uflight(${i},'battery',this.value)" placeholder="e.g. 32" min="0" max="100" style="width:100px"></div>
       <div style="padding:0 16px 12px"><div class="field-label">Flight notes</div><textarea class="field-input" rows="2" onchange="uflight(${i},'notes',this.value)" placeholder="Notes…">${f.notes||''}</textarea></div>
+      <div style="padding:0 16px 4px"><div class="field-label">Photos</div></div>
+      <div class="photo-grid" id="photos-${i}"></div>
+      <div style="padding:0 16px 12px">
+        <input type="file" accept="image/*" multiple id="photo-input-${i}" style="display:none" onchange="addPhotos(${i},this)">
+        <button class="btn-secondary" style="width:100%;font-size:13px;padding:8px" onclick="document.getElementById('photo-input-${i}').click()">+ Add photos</button>
+      </div>
       <div style="padding:0 16px 4px"><div class="field-label">Photos</div></div>
       <div class="photo-grid" id="photos-${i}">${renderPhotoGrid(f.photos||[],i)}</div>
       <input type="file" id="photo-input-${i}" accept="image/*" multiple style="display:none" onchange="addPhotos(${i},this)">
@@ -601,6 +615,68 @@ function convertUnits(){
   if(est){const[hh,mm]=est.split(':').map(Number);document.getElementById('utc-out').textContent=String((hh+5)%24).padStart(2,'0')+':'+String(mm).padStart(2,'0')+' UTC';}
   else document.getElementById('utc-out').textContent='—';
 }
+function renderPhotoGrid(flightIdx){
+  const grid=document.getElementById('photos-'+flightIdx);
+  if(!grid)return;
+  const photos=CM.flights[flightIdx].photos||[];
+  let html=photos.map((p,pi)=>`
+    <div class="photo-thumb" onclick="viewPhoto('${flightIdx}','${pi}')">
+      <img src="${p.data}" alt="Flight photo">
+      <button class="photo-del" onclick="event.stopPropagation();deletePhoto(${flightIdx},${pi})" title="Remove">✕</button>
+    </div>`).join('');
+  if(photos.length<10){
+    html+=`<label class="photo-add-btn" for="photo-input-${flightIdx}"><span>+</span>Add</label>`;
+  }
+  grid.innerHTML=html;
+}
+
+function addPhotos(flightIdx,input){
+  const files=Array.from(input.files);
+  if(!files.length)return;
+  const flight=CM.flights[flightIdx];
+  if(!flight.photos)flight.photos=[];
+  let loaded=0;
+  files.forEach(file=>{
+    // Compress to max ~800px wide before storing
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement('canvas');
+        const MAX=800;
+        let w=img.width,h=img.height;
+        if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+        if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        const data=canvas.toDataURL('image/jpeg',0.75);
+        flight.photos.push({data,name:file.name});
+        loaded++;
+        if(loaded===files.length){persist();renderPhotoGrid(flightIdx);}
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value='';
+}
+
+function deletePhoto(flightIdx,photoIdx){
+  if(!confirm('Remove this photo?'))return;
+  CM.flights[flightIdx].photos.splice(photoIdx,1);
+  persist();renderPhotoGrid(flightIdx);
+}
+
+function viewPhoto(flightIdx,photoIdx){
+  const p=CM.flights[flightIdx].photos[photoIdx];
+  if(!p)return;
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML=`<img src="${p.data}" style="max-width:100%;max-height:90vh;border-radius:8px;object-fit:contain">`;
+  overlay.onclick=()=>overlay.remove();
+  document.body.appendChild(overlay);
+}
+
 function exportPDF(){
   const m=CM;
   if(!window.jspdf){showToastMsg('Loading PDF library…');return;}
