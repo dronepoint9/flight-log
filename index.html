@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="DronePoint">
 <meta name="theme-color" content="#1D9E75">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <title>DronePoint — UAS Flight Log</title>
 <style>
 :root { --accent: #1D9E75; --accent-dark: #0F6E56; --bg: #f5f5f3; --bg2: #ffffff; --bg3: #efefec; --text: #1a1a1a; --text2: #666; --border: rgba(0,0,0,0.12); --border2: rgba(0,0,0,0.22); --radius: 12px; --radius-sm: 8px; }
@@ -111,6 +114,16 @@ textarea.field-input { resize: vertical; }
 .doc-item:last-child { border-bottom: none; }
 .doc-left { flex: 1; min-width: 0; }
 .offline-banner { display: none; background: #FAEEDA; color: #633806; font-size: 12px; text-align: center; padding: 6px 16px; }
+.btn-hub { background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); padding: 6px 10px; font-size: 12px; color: var(--text2); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.btn-hub:hover { background: var(--bg3); }
+.mission-delete-btn { background: none; border: none; cursor: pointer; color: #E24B4A; font-size: 16px; padding: 0 2px; flex-shrink: 0; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px 16px 12px; }
+.photo-thumb { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--bg3); cursor: pointer; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb .photo-del { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+.photo-add-btn { aspect-ratio: 1; border-radius: 6px; border: 1.5px dashed var(--border2); background: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--text2); font-family: inherit; }
+.photo-add-btn:hover { background: var(--bg3); }
+.photo-add-icon { font-size: 22px; }
 </style>
 </head>
 <body>
@@ -121,7 +134,10 @@ textarea.field-input { resize: vertical; }
       <div class="top-bar-title">DronePoint</div>
       <div class="top-bar-sub" id="top-sub">UAS Flight Log</div>
     </div>
-    <button class="btn-icon" id="new-mission-btn">+ New mission</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a class="btn-hub" href="https://dronepoint9.github.io">← Hub</a>
+      <button class="btn-icon" id="new-mission-btn">+ New mission</button>
+    </div>
   </div>
 
   <div class="page active" id="page-checklist"><div id="checklist-content"></div></div>
@@ -165,7 +181,7 @@ textarea.field-input { resize: vertical; }
     </div>
     <div class="section-card" style="margin-top:4px">
       <div class="section-header" style="cursor:default"><span class="section-title">Export current mission</span></div>
-      <div style="padding:12px 16px"><button class="btn-primary" onclick="exportMission()">Export as text report</button></div>
+      <div style="padding:12px 16px"><button class="btn-primary" onclick="exportPDF()">Export as PDF report</button></div>
     </div>
   </div>
 
@@ -484,6 +500,9 @@ function renderFlightCard(f,i){
       </div>
       <div style="padding:0 16px 12px"><div class="field-label">Battery level at landing (%)</div><input type="number" class="field-input" value="${f.battery||''}" onchange="uflight(${i},'battery',this.value)" placeholder="e.g. 32" min="0" max="100" style="width:100px"></div>
       <div style="padding:0 16px 12px"><div class="field-label">Flight notes</div><textarea class="field-input" rows="2" onchange="uflight(${i},'notes',this.value)" placeholder="Notes…">${f.notes||''}</textarea></div>
+      <div style="padding:0 16px 4px"><div class="field-label">Photos</div></div>
+      <div class="photo-grid" id="photos-${i}">${renderPhotoGrid(f.photos||[],i)}</div>
+      <input type="file" id="photo-input-${i}" accept="image/*" multiple style="display:none" onchange="addPhotos(${i},this)">
     </div>
   </div>`;
 }
@@ -517,10 +536,16 @@ function renderMissions(){
     const done=m.checks?Object.values(m.checks).filter(v=>v==='checked').length:0;
     const na=m.checks?Object.values(m.checks).filter(v=>v==='na').length:0;
     const pct=(total-na)>0?Math.round(done/(total-na)*100):0;
-    return `<div class="mission-list-item" onclick="loadMission('${m.id}')"><div><div class="mlabel">${m.location||'Untitled mission'}${m.missionNum?' — #'+m.missionNum:''}</div><div class="msub">${m.date} · ${fl} flight${fl!==1?'s':''} · checklist ${pct}%${na?' · '+na+' N/A':''}</div></div><span class="mission-arrow">›</span></div>`;
+    return `<div class="mission-list-item" onclick="loadMission('${m.id}')"><div><div class="mlabel">${m.location||'Untitled mission'}${m.missionNum?' — #'+m.missionNum:''}</div><div class="msub">${m.date} · ${fl} flight${fl!==1?'s':''} · checklist ${pct}%${na?' · '+na+' N/A':''}</div></div><div style="display:flex;align-items:center;gap:4px"><span class="mission-arrow">›</span><button class="mission-delete-btn" onclick="event.stopPropagation();deleteMission('${m.id}')" title="Delete">✕</button></div></div>`;
   }).join('');
 }
 function loadMission(id){const f=getMissions().find(m=>m.id===id);if(f){CM=f;setCurrentId(id);switchTab('checklist',document.querySelectorAll('.nav-tab')[0]);updateTopBar();}}
+function deleteMission(id){
+  if(!confirm('Delete this mission? This cannot be undone.'))return;
+  const ms=getMissions().filter(m=>m.id!==id);saveMissions(ms);
+  if(CM&&CM.id===id){CM=getEmptyMission();setCurrentId(CM.id);persist();}
+  renderMissions();updateTopBar();
+}
 function updateTopBar(){const sub=document.getElementById('top-sub');sub.textContent=(CM&&(CM.location||CM.missionNum))?(CM.location||'Mission')+(CM.missionNum?' · #'+CM.missionNum:''):'UAS Flight Log';}
 
 function renderDocs(){
@@ -576,21 +601,316 @@ function convertUnits(){
   if(est){const[hh,mm]=est.split(':').map(Number);document.getElementById('utc-out').textContent=String((hh+5)%24).padStart(2,'0')+':'+String(mm).padStart(2,'0')+' UTC';}
   else document.getElementById('utc-out').textContent='—';
 }
-function exportMission(){
+function exportPDF(){
   const m=CM;
-  let out=`UAS FLIGHT LOG — DRONEPOINT\n${'='.repeat(50)}\nMission #: ${m.missionNum||'—'}\nDate: ${m.date}\nLocation: ${m.location||'—'}\nPilot: ${m.pilotName} | Cert: ${m.pilotCert}\nAircraft: ${m.aircraft}\nMission type: ${m.missionType||'—'} | Airspace: ${m.airspace||'—'}\nMax altitude: ${m.maxAlt||'—'} ft AGL\n\nFLIGHTS (${m.flights.length})\n${'-'.repeat(30)}\n`;
-  m.flights.forEach((f,i)=>{out+=`Flight ${i+1}: ${f.takeoffLoc||'?'} → ${f.landingLoc||'?'} | ${f.launch||'?'} – ${f.landing||'?'} (${calcElapsed(f.launch,f.landing)}) | Bat: ${f.battery||'?'}%\n`;if(f.notes)out+=`  Notes: ${f.notes}\n`;});
-  const naItems=[];CHECKLISTS.forEach(sec=>{sec.items.forEach((item,i)=>{if(getState(sec.id,i)==='na')naItems.push(item);});});
-  let tA=0,tD=0;CHECKLISTS.forEach(s=>{const p=getProgress(s.id);tD+=p.done;tA+=p.applicable;});
-  out+=`\nCHECKLIST: ${tD}/${tA} applicable items complete`;
-  if(naItems.length)out+=`\nN/A items (${naItems.length}): ${naItems.join(', ')}`;
-  if(m.missionNotes)out+=`\n\nMISSION NOTES:\n${m.missionNotes}\n`;
-  const blob=new Blob([out],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`DronePoint_Mission_${m.missionNum||m.id}_${m.date}.txt`;a.click();
+  if(!window.jspdf){showToastMsg('Loading PDF library…');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'letter'});
+  const W=612,ML=48,MR=48,TW=W-ML-MR;
+  const GREEN='#1D9E75',DARK='#1a1a1a',GRAY='#666666',LIGHTGRAY='#f5f5f3',MIDGRAY='#dddddd';
+  let y=48;
+
+  // ── Header bar ──────────────────────────────────────────
+  doc.setFillColor(29,158,117);
+  doc.rect(0,0,W,56,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(20);
+  doc.text('DronePoint',ML,36);
+  doc.setFontSize(10);
+  doc.setFont('helvetica','normal');
+  doc.text('UAS Mission Report',ML,50);
+  // Mission # top right
+  if(m.missionNum){
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('Mission #'+m.missionNum,W-MR,36,{align:'right'});
+  }
+  doc.setFontSize(9);
+  doc.setFont('helvetica','normal');
+  doc.text('Tulane Construction Group / Professional Drafting Services',W-MR,50,{align:'right'});
+  y=80;
+
+  // ── Helper functions ─────────────────────────────────────
+  function sectionHeader(title){
+    doc.setFillColor(240,240,236);
+    doc.rect(ML,y,TW,18,'F');
+    doc.setDrawColor(200,200,196);
+    doc.rect(ML,y,TW,18,'S');
+    doc.setFillColor(29,158,117);
+    doc.rect(ML,y,3,18,'F');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(9);
+    doc.setTextColor(26,26,26);
+    doc.text(title.toUpperCase(),ML+10,y+12);
+    y+=26;
+  }
+
+  function fieldRow(label,value,x2col){
+    if(x2col){
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(102,102,102);
+      doc.text(label,ML,y);
+      doc.setTextColor(26,26,26);
+      doc.setFont('helvetica','bold');
+      doc.text(value||'—',ML+90,y);
+      return;
+    }
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(102,102,102);
+    doc.text(label,ML,y);
+    doc.setTextColor(26,26,26);
+    doc.setFont('helvetica','bold');
+    doc.text(value||'—',ML+130,y);
+    y+=14;
+  }
+
+  function twoCol(l1,v1,l2,v2){
+    const halfX=ML+TW/2+8;
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);
+    doc.setTextColor(102,102,102);
+    doc.text(l1,ML,y);
+    doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');
+    doc.text(v1||'—',ML+110,y);
+    doc.setFont('helvetica','normal');doc.setTextColor(102,102,102);
+    doc.text(l2,halfX,y);
+    doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');
+    doc.text(v2||'—',halfX+110,y);
+    y+=14;
+  }
+
+  function checkPage(needed){
+    if(y+needed>750){doc.addPage();y=48;}
+  }
+
+  // ── Mission Info ─────────────────────────────────────────
+  sectionHeader('Mission Information');
+  twoCol('Date',m.date,'Location',m.location);
+  twoCol('Mission Type',m.missionType,'Airspace',m.airspace);
+  twoCol('Aircraft',m.aircraft,'Max Altitude (AGL)',(m.maxAlt?m.maxAlt+' ft':''));
+  twoCol('Airports within 5mi',m.airports,'Waivers','—');
+  twoCol('Morning Civil Twilight',m.mornTwilight,'Evening Civil Twilight',m.eveTwilight);
+  if(m.missionDesc){
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);
+    doc.text('Description',ML,y);
+    doc.setTextColor(26,26,26);doc.setFont('helvetica','normal');
+    const lines=doc.splitTextToSize(m.missionDesc,TW-130);
+    doc.text(lines,ML+130,y);
+    y+=lines.length*12+4;
+  }
+  y+=6;
+
+  // ── Pilot Info ───────────────────────────────────────────
+  sectionHeader('Pilot Information');
+  twoCol('Pilot Name',m.pilotName,'Certificate #',m.pilotCert);
+  twoCol('Phone',m.pilotPhone,'Visual Observer(s)',m.visualObservers||'None');
+  if(m.pilotAddress){
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);
+    doc.text('Address',ML,y);
+    doc.setTextColor(26,26,26);doc.setFont('helvetica','normal');
+    doc.text(m.pilotAddress,ML+130,y);
+    y+=14;
+  }
+  y+=6;
+
+  // ── Flight Record ─────────────────────────────────────────
+  checkPage(60);
+  sectionHeader('Flight Record — '+m.flights.length+' Flight'+(m.flights.length!==1?'s':''));
+  if(m.flights.length===0){
+    doc.setFont('helvetica','italic');doc.setFontSize(9);doc.setTextColor(150,150,150);
+    doc.text('No flights logged.',ML,y);y+=16;
+  } else {
+    // Table header
+    doc.setFillColor(230,241,251);
+    doc.rect(ML,y-2,TW,14,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(24,95,165);
+    const cols=[ML,ML+22,ML+120,ML+230,ML+310,ML+390,ML+450];
+    const heads=['#','Takeoff Location','Landing Location','Launch','Landing','Elapsed','Battery'];
+    heads.forEach((h,i)=>doc.text(h,cols[i],y+9));
+    y+=16;
+    doc.setDrawColor(180,212,244);doc.line(ML,y-2,ML+TW,y-2);
+
+    m.flights.forEach((f,i)=>{
+      checkPage(20);
+      if(i%2===0){doc.setFillColor(249,249,247);doc.rect(ML,y-2,TW,14,'F');}
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(26,26,26);
+      const el=calcElapsed(f.launch,f.landing);
+      const vals=[String(i+1),f.takeoffLoc||'—',f.landingLoc||'—',f.launch||'—',f.landing||'—',el,f.battery?(f.battery+'%'):'—'];
+      // truncate long location names
+      vals[1]=vals[1].length>18?vals[1].slice(0,17)+'…':vals[1];
+      vals[2]=vals[2].length>18?vals[2].slice(0,17)+'…':vals[2];
+      vals.forEach((v,j)=>doc.text(v,cols[j],y+9));
+      y+=14;
+      if(f.notes){
+        doc.setFont('helvetica','italic');doc.setFontSize(7.5);doc.setTextColor(102,102,102);
+        const nl=doc.splitTextToSize('Note: '+f.notes,TW-20);
+        doc.text(nl,ML+22,y+8);
+        y+=nl.length*10+4;
+      }
+    });
+  }
+  y+=8;
+
+  // ── Checklist Summary ─────────────────────────────────────
+  checkPage(80);
+  let totalDone=0,totalApp=0,naItems=[];
+  CHECKLISTS.forEach(sec=>{
+    const pg=getProgress(sec.id);totalDone+=pg.done;totalApp+=pg.applicable;
+    sec.items.forEach((item,i)=>{if(getState(sec.id,i)==='na')naItems.push({sec:sec.label,item});});
+  });
+  const pct=totalApp>0?Math.round(totalDone/totalApp*100):0;
+  sectionHeader('Checklist Summary — '+totalDone+'/'+totalApp+' Items Complete ('+pct+'%)');
+
+  CHECKLISTS.forEach(sec=>{
+    checkPage(40);
+    const pg=getProgress(sec.id);
+    const allDone=pg.done===pg.applicable&&pg.applicable>0;
+    // Section row
+    doc.setFillColor(allDone?234:pg.done>0?250:245, allDone?243:pg.done>0?238:245, allDone?222:pg.done>0?218:243);
+    doc.rect(ML,y,TW,14,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8.5);
+    doc.setTextColor(allDone?39:pg.done>0?99:80, allDone?80:pg.done>0?56:80, allDone?10:pg.done>0?11:80);
+    doc.text(sec.label,ML+8,y+10);
+    doc.setFont('helvetica','normal');
+    doc.text(pg.done+'/'+pg.applicable,ML+TW-8,y+10,{align:'right'});
+    y+=16;
+
+    // Items
+    sec.items.forEach((item,i)=>{
+      checkPage(12);
+      const st=getState(sec.id,i);
+      const symbol=st==='checked'?'✓':st==='na'?'N/A':'○';
+      const col=st==='checked'?[29,158,117]:st==='na'?[162,45,45]:[180,180,180];
+      doc.setTextColor(col[0],col[1],col[2]);
+      doc.setFont('helvetica',st==='checked'?'bold':'normal');
+      doc.setFontSize(7.5);
+      doc.text(symbol,ML+8,y+8);
+      doc.setTextColor(st==='unchecked'?150:26,st==='unchecked'?150:26,st==='unchecked'?150:26);
+      doc.setFont('helvetica','normal');
+      doc.text(item,ML+28,y+8);
+      y+=11;
+    });
+    y+=4;
+  });
+
+  // ── Mission Notes ─────────────────────────────────────────
+  if(m.missionNotes){
+    checkPage(50);
+    sectionHeader('Mission Notes');
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(26,26,26);
+    const nl=doc.splitTextToSize(m.missionNotes,TW);
+    doc.text(nl,ML,y);
+    y+=nl.length*13+8;
+  }
+
+  // ── Signature block ───────────────────────────────────────
+  checkPage(70);
+  y+=10;
+  doc.setDrawColor(200,200,196);doc.line(ML,y,ML+TW,y);y+=16;
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(102,102,102);
+  doc.text('Pilot signature',ML,y);
+  doc.text('Date',ML+TW/2,y);
+  y+=24;
+  doc.setDrawColor(26,26,26);
+  doc.line(ML,y,ML+200,y);
+  doc.line(ML+TW/2,y,ML+TW/2+120,y);
+  y+=18;
+
+  // ── Footer on all pages ───────────────────────────────────
+  const pageCount=doc.getNumberOfPages();
+  for(let p=1;p<=pageCount;p++){
+    doc.setPage(p);
+    doc.setFillColor(29,158,117);doc.rect(0,760,W,32,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(255,255,255);
+    doc.text('DronePoint — Tulane Construction Group / Professional Drafting Services',ML,776);
+    doc.text('Page '+p+' of '+pageCount,W-MR,776,{align:'right'});
+  }
+
+  const fname='DronePoint_Mission'+(m.missionNum?'_'+m.missionNum:'')+'_'+(m.date||'undated')+'.pdf';
+  doc.save(fname);
+}
+
+function renderPhotoGrid(photos, flightIdx) {
+  let html = (photos||[]).map((p,pi) =>
+    `<div class="photo-thumb">
+      <img src="${p.data}" alt="Flight photo ${pi+1}" onclick="viewPhoto('${p.data}')">
+      <button class="photo-del" onclick="event.stopPropagation();deletePhoto(${flightIdx},${pi})" title="Remove">✕</button>
+    </div>`
+  ).join('');
+  html += `<button class="photo-add-btn" onclick="document.getElementById('photo-input-${flightIdx}').click()">
+    <span class="photo-add-icon">📷</span><span>Add photo</span>
+  </button>`;
+  return html;
+}
+
+function addPhotos(flightIdx, input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  const flight = CM.flights[flightIdx];
+  if (!flight.photos) flight.photos = [];
+  let loaded = 0;
+  files.forEach(file => {
+    // Compress before storing
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX = 1200;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+          else { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const data = canvas.toDataURL('image/jpeg', 0.75);
+        flight.photos.push({ data, name: file.name });
+        loaded++;
+        if (loaded === files.length) {
+          persist();
+          const grid = document.getElementById('photos-'+flightIdx);
+          if (grid) grid.innerHTML = renderPhotoGrid(flight.photos, flightIdx);
+          input.value = '';
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function deletePhoto(flightIdx, photoIdx) {
+  if (!confirm('Remove this photo?')) return;
+  CM.flights[flightIdx].photos.splice(photoIdx, 1);
+  persist();
+  const grid = document.getElementById('photos-'+flightIdx);
+  if (grid) grid.innerHTML = renderPhotoGrid(CM.flights[flightIdx].photos, flightIdx);
+}
+
+function viewPhoto(dataUrl) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.onclick = () => overlay.remove();
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  img.style.cssText = 'max-width:100%;max-height:100%;border-radius:8px;object-fit:contain';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+function showToastMsg(msg){
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:white;padding:10px 18px;border-radius:20px;font-size:14px;z-index:9999';
+  d.textContent=msg;document.body.appendChild(d);
+  setTimeout(()=>d.remove(),2500);
 }
 
 document.getElementById('new-mission-btn').addEventListener('click',()=>{CM=getEmptyMission();setCurrentId(CM.id);persist();updateTopBar();switchTab('checklist',document.querySelectorAll('.nav-tab')[0]);});
 loadCM();updateTopBar();renderChecklist();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </body>
 </html>
