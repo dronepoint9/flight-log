@@ -183,10 +183,6 @@ textarea.field-input{resize:vertical;}
         <div style="flex:1"><div class="field-label">UTC</div><input type="time" class="field-input" id="utc-in" oninput="convTime('utc')"></div>
       </div>
     </div>
-    <div class="section-card" style="margin-top:4px">
-      <div class="section-header" style="cursor:default"><span class="section-title">Export current mission</span></div>
-      <div style="padding:12px 16px"><button class="btn-primary" onclick="exportPDF()">Export as PDF report</button></div>
-    </div>
   </div>
 
   <div class="page" id="page-settings">
@@ -473,7 +469,7 @@ const CHECKLISTS=[
 
 const DEFAULT_MISSION_TYPES=['LiDAR','Documentation','Training','Inspection','Photos/Videos','Photogrammetry','Agricultural Survey'];
 const DEFAULT_AIRSPACE=['Class A','Class B','Class C','Class D','Class E - Surface','Class E','Class G'];
-const DEFAULT_AIRCRAFT=[{name:'DJI M3E',cert:'FA3TX3YPCC'},{name:'DJI Mini 4 Pro',cert:'FA3TX3YPCC'},{name:'DJI Matrice 350 RTK',cert:'FA3ATX99TA'}];
+const DEFAULT_AIRCRAFT=[{name:'DJI M3E',cert:'FA3FH7CEW9'},{name:'DJI Mini 4 Pro',cert:'FA3FH7CEW9'},{name:'DJI Matrice 350 RTK',cert:'FA3ATX99TA'}];
 const DEFAULT_PILOT={name:'Nicholas Seres',cert:'5104759',phone:'716-491-4033',address:'15 Offshore Drive Apt 203 East Amherst, NY 14051'};
 const DEFAULT_DOCS=[{label:'FAA Part 107 Certificate',url:''},{label:'Drone Insurance',url:''},{label:'DJI M3E Manual',url:''}];
 const STATES=['unchecked','checked','na'];
@@ -497,7 +493,7 @@ function getEmptyMission(){
     locationLat:null,locationLon:null,
     pilotName:p.name,pilotAddress:p.address,pilotCert:p.cert,pilotPhone:p.phone,
     visualObservers:'',airports:'',airspace:'',missionType:'',
-    aircraft:ac.length?ac[0].name+(ac[0].cert?' — '+ac[0].cert:''):'',
+    aircraft:'',
     maxAlt:'',sunrise:'',sunset:'',mornTwilight:'',eveTwilight:'',
     lightingStart:'',lightingEnd:'',
     timeOnSite:'',timeOffSite:'',
@@ -594,7 +590,15 @@ function handleAcSel(){
   }else{CM.aircraft=el.value;persist();}
 }
 
-function calcOnsiteDuration(timeIn,timeOut){
+function ufSiteTime(field,value){
+  CM[field]=value;persist();
+  // Update duration display without rebuilding the whole log
+  const dur=calcOnsiteDuration(CM.timeOnSite,CM.timeOffSite);
+  const durEl=document.getElementById('onsite-dur');
+  if(durEl)durEl.textContent=dur||'—';
+  const headerEl=document.getElementById('onsite-header-dur');
+  if(headerEl)headerEl.textContent=dur?dur+' on site':'';
+}
   if(!timeIn||!timeOut)return'';
   const[h1,m1]=timeIn.split(':').map(Number),[h2,m2]=timeOut.split(':').map(Number);
   let mins=(h2*60+m2)-(h1*60+m1);if(mins<0)mins+=1440;
@@ -667,11 +671,11 @@ function renderLog(){
   </div>
 
   <div class="section-card">
-    <div class="section-header" style="cursor:default"><span class="section-title">Site time</span>${onsiteDur?`<span style="font-size:12px;color:var(--accent);font-weight:600">${onsiteDur} on site</span>`:''}</div>
+    <div class="section-header" style="cursor:default"><span class="section-title">Site time</span><span id="onsite-header-dur" style="font-size:12px;color:var(--accent);font-weight:600">${onsiteDur?onsiteDur+' on site':''}</span></div>
     <div class="onsite-row">
-      <div><div class="field-label">Time on-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeon" value="${m.timeOnSite||''}" onchange="uf('timeOnSite');renderLog()"></div>
-      <div><div class="field-label">Time off-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeoff" value="${m.timeOffSite||''}" onchange="uf('timeOffSite');renderLog()"></div>
-      <div><div class="field-label">Duration</div><div class="field-input" style="background:var(--bg3);color:var(--text2);display:flex;align-items:center;">${onsiteDur||'—'}</div></div>
+      <div><div class="field-label">Time on-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeon" value="${m.timeOnSite||''}" onchange="ufSiteTime('timeOnSite',this.value)"></div>
+      <div><div class="field-label">Time off-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeoff" value="${m.timeOffSite||''}" onchange="ufSiteTime('timeOffSite',this.value)"></div>
+      <div><div class="field-label">Duration</div><div class="field-input" id="onsite-dur" style="background:var(--bg3);color:var(--text2);display:flex;align-items:center;">${onsiteDur||'—'}</div></div>
     </div>
   </div>
 
