@@ -160,33 +160,28 @@ textarea.field-input{resize:vertical;}
     <div class="page-title">Tools</div>
     <div class="page-sub">Conversions &amp; utilities</div>
     <div class="section-card">
-      <div class="section-header" style="cursor:default"><span class="section-title">MPH → Knots</span></div>
+      <div class="section-header" style="cursor:default"><span class="section-title">Speed</span></div>
       <div style="padding:12px 16px;display:flex;gap:8px;align-items:center;">
-        <input type="number" class="field-input" id="mph-in" placeholder="MPH" style="width:100px" oninput="convertUnits()">
-        <span style="color:var(--text2);font-size:13px">→</span>
-        <div class="convert-result" style="flex:1"><span>Knots</span><span id="kn-out">—</span></div>
+        <div style="flex:1"><div class="field-label">MPH</div><input type="number" class="field-input" id="mph-in" placeholder="MPH" oninput="convSpeed('mph')"></div>
+        <span style="color:var(--text2);font-size:13px;margin-top:16px">⇄</span>
+        <div style="flex:1"><div class="field-label">Knots</div><input type="number" class="field-input" id="kn-in" placeholder="Knots" oninput="convSpeed('kn')"></div>
       </div>
     </div>
     <div class="section-card">
-      <div class="section-header" style="cursor:default"><span class="section-title">°F → °C</span></div>
+      <div class="section-header" style="cursor:default"><span class="section-title">Temperature</span></div>
       <div style="padding:12px 16px;display:flex;gap:8px;align-items:center;">
-        <input type="number" class="field-input" id="f-in" placeholder="°F" style="width:100px" oninput="convertUnits()">
-        <span style="color:var(--text2);font-size:13px">→</span>
-        <div class="convert-result" style="flex:1"><span>Celsius</span><span id="c-out">—</span></div>
+        <div style="flex:1"><div class="field-label">°F</div><input type="number" class="field-input" id="f-in" placeholder="°F" oninput="convTemp('f')"></div>
+        <span style="color:var(--text2);font-size:13px;margin-top:16px">⇄</span>
+        <div style="flex:1"><div class="field-label">°C</div><input type="number" class="field-input" id="c-in" placeholder="°C" oninput="convTemp('c')"></div>
       </div>
     </div>
     <div class="section-card">
-      <div class="section-header" style="cursor:default"><span class="section-title">EST → UTC</span></div>
+      <div class="section-header" style="cursor:default"><span class="section-title">Time</span></div>
       <div style="padding:12px 16px;display:flex;gap:8px;align-items:center;">
-        <input type="time" class="field-input" id="est-in" style="width:130px" oninput="convertUnits()">
-        <span style="color:var(--text2);font-size:13px">→</span>
-        <div class="convert-result" style="flex:1"><span>UTC</span><span id="utc-out">—</span></div>
+        <div style="flex:1"><div class="field-label">ET (EST/EDT)</div><input type="time" class="field-input" id="et-in" oninput="convTime('et')"></div>
+        <span style="color:var(--text2);font-size:13px;margin-top:16px">⇄</span>
+        <div style="flex:1"><div class="field-label">UTC</div><input type="time" class="field-input" id="utc-in" oninput="convTime('utc')"></div>
       </div>
-    </div>
-    <div class="section-card">
-      <div class="section-header" style="cursor:default"><span class="section-title">Documents &amp; references</span></div>
-      <div id="docs-list"></div>
-      <div style="padding:10px 16px"><button class="btn-secondary" style="width:100%" onclick="openAddDocModal()">+ Add document link</button></div>
     </div>
     <div class="section-card" style="margin-top:4px">
       <div class="section-header" style="cursor:default"><span class="section-title">Export current mission</span></div>
@@ -321,12 +316,32 @@ function addMinutes(timeStr,mins){
   return String(nh).padStart(2,'0')+':'+String(nm).padStart(2,'0');
 }
 
-// Convert UTC time string to EST (UTC-5)
-function utcToEST(utcStr){
+// Convert UTC time string to ET — DST aware based on mission date
+function utcToET(utcStr, dateStr){
   if(!utcStr)return'—';
   const[h,m]=utcStr.split(':').map(Number);
-  const estH=(h-5+24)%24;
-  return String(estH).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  const offset=isEDT(dateStr)?-4:-5;
+  const etH=((h+offset)+24)%24;
+  return String(etH).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+
+// Returns true if date falls within EDT (2nd Sun March → 1st Sun Nov)
+function isEDT(dateStr){
+  if(!dateStr)return false;
+  const d=new Date(dateStr+'T12:00:00');
+  const year=d.getFullYear();
+  // 2nd Sunday in March
+  const march=new Date(year,2,1);
+  const dstStart=new Date(year,2,8+(7-march.getDay())%7);
+  // 1st Sunday in November
+  const nov=new Date(year,10,1);
+  const dstEnd=new Date(year,10,(7-nov.getDay())%7+1);
+  return d>=dstStart&&d<dstEnd;
+}
+
+// Get current ET offset based on mission date
+function getETOffset(){
+  return isEDT(CM&&CM.date?CM.date:new Date().toISOString().split('T')[0])?-4:-5;
 }
 
 async function fetchSunTimes(lat,lon,date){
@@ -334,13 +349,10 @@ async function fetchSunTimes(lat,lon,date){
     const r=await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${date}&formatted=0`);
     const d=await r.json();
     if(d.status!=='OK')return null;
-    // Times come back as UTC ISO strings
-    const sunrise=utcToEST(d.results.sunrise.split('T')[1].slice(0,5));
-    const sunset=utcToEST(d.results.sunset.split('T')[1].slice(0,5));
-    // Civil twilight from API
-    const mCivil=utcToEST(d.results.civil_twilight_begin.split('T')[1].slice(0,5));
-    const eCivil=utcToEST(d.results.civil_twilight_end.split('T')[1].slice(0,5));
-    // Anti-collision window: sunrise+30 to sunset-30
+    const sunrise=utcToET(d.results.sunrise.split('T')[1].slice(0,5),date);
+    const sunset=utcToET(d.results.sunset.split('T')[1].slice(0,5),date);
+    const mCivil=utcToET(d.results.civil_twilight_begin.split('T')[1].slice(0,5),date);
+    const eCivil=utcToET(d.results.civil_twilight_end.split('T')[1].slice(0,5),date);
     const lightingStart=addMinutes(sunrise,30);
     const lightingEnd=addMinutes(sunset,-30);
     return{sunrise,sunset,mCivil,eCivil,lightingStart,lightingEnd};
@@ -605,7 +617,7 @@ function renderLog(){
   if(m.lightingStart&&m.lightingEnd){
     lightingHtml=`<div class="lighting-card">
       <div class="lighting-label">Anti-collision lighting not required</div>
-      <div class="lighting-value">${m.lightingStart} EST – ${m.lightingEnd} EST</div>
+      <div class="lighting-value">${m.lightingStart} ET – ${m.lightingEnd} ET</div>
       <div class="lighting-sub">Outside this window, anti-collision lighting must be on</div>
     </div>`;
   }
@@ -644,12 +656,12 @@ function renderLog(){
       <span style="font-size:11px;color:var(--text2)">${hasCoords?'Auto from location + date':'Select location to auto-fill'}</span>
     </div>
     <div class="row2" style="padding:12px 16px;gap:8px">
-      <div><div class="field-label">Sunrise <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-sunrise" value="${m.sunrise||''}" onchange="uf('sunrise');recalcLighting()"></div>
-      <div><div class="field-label">Sunset <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-sunset" value="${m.sunset||''}" onchange="uf('sunset');recalcLighting()"></div>
+      <div><div class="field-label">Sunrise <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-sunrise" value="${m.sunrise||''}" onchange="uf('sunrise');recalcLighting()"></div>
+      <div><div class="field-label">Sunset <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-sunset" value="${m.sunset||''}" onchange="uf('sunset');recalcLighting()"></div>
     </div>
     <div class="row2" style="padding:0 16px 12px;gap:8px">
-      <div><div class="field-label">Morning civil twilight <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-mcivil" value="${m.mornTwilight||''}" onchange="uf('mornTwilight')"></div>
-      <div><div class="field-label">Evening civil twilight <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-ecivil" value="${m.eveTwilight||''}" onchange="uf('eveTwilight')"></div>
+      <div><div class="field-label">Morning civil twilight <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-mcivil" value="${m.mornTwilight||''}" onchange="uf('mornTwilight')"></div>
+      <div><div class="field-label">Evening civil twilight <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-ecivil" value="${m.eveTwilight||''}" onchange="uf('eveTwilight')"></div>
     </div>
     <div style="padding:0 16px 12px">${lightingHtml||`<div class="lighting-card"><div class="lighting-label">Anti-collision lighting window</div><div class="lighting-value" style="color:var(--text2)">Select location and date to calculate</div></div>`}</div>
   </div>
@@ -657,8 +669,8 @@ function renderLog(){
   <div class="section-card">
     <div class="section-header" style="cursor:default"><span class="section-title">Site time</span>${onsiteDur?`<span style="font-size:12px;color:var(--accent);font-weight:600">${onsiteDur} on site</span>`:''}</div>
     <div class="onsite-row">
-      <div><div class="field-label">Time on-site <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-timeon" value="${m.timeOnSite||''}" onchange="uf('timeOnSite');renderLog()"></div>
-      <div><div class="field-label">Time off-site <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-timeoff" value="${m.timeOffSite||''}" onchange="uf('timeOffSite');renderLog()"></div>
+      <div><div class="field-label">Time on-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeon" value="${m.timeOnSite||''}" onchange="uf('timeOnSite');renderLog()"></div>
+      <div><div class="field-label">Time off-site <span class="field-unit">ET</span></div><input type="time" class="field-input" id="f-timeoff" value="${m.timeOffSite||''}" onchange="uf('timeOffSite');renderLog()"></div>
       <div><div class="field-label">Duration</div><div class="field-input" style="background:var(--bg3);color:var(--text2);display:flex;align-items:center;">${onsiteDur||'—'}</div></div>
     </div>
   </div>
@@ -725,8 +737,8 @@ function renderFlightCard(f,i){
         <div><div class="field-label">Landing location</div><input class="field-input" value="${f.landingLoc||''}" onchange="ufl(${i},'landingLoc',this.value)" placeholder="Location"></div>
       </div>
       <div class="row2" style="padding:0 16px 12px;gap:8px">
-        <div><div class="field-label">Launch <span class="field-unit">EST</span></div><input type="time" class="field-input" value="${f.launch||''}" onchange="uflTime(${i},'launch',this.value)"></div>
-        <div><div class="field-label">Landing <span class="field-unit">EST</span></div><input type="time" class="field-input" value="${f.landing||''}" onchange="uflTime(${i},'landing',this.value)"></div>
+        <div><div class="field-label">Launch <span class="field-unit">ET</span></div><input type="time" class="field-input" value="${f.launch||''}" onchange="uflTime(${i},'launch',this.value)"></div>
+        <div><div class="field-label">Landing <span class="field-unit">ET</span></div><input type="time" class="field-input" value="${f.landing||''}" onchange="uflTime(${i},'landing',this.value)"></div>
       </div>
       <div style="padding:0 16px 12px"><div class="field-label">Flight notes</div><textarea class="field-input" rows="2" onchange="ufl(${i},'notes',this.value)" placeholder="Notes…">${f.notes||''}</textarea></div>
     </div>
@@ -857,15 +869,46 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-backdrop').forEach(m=>{m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');});});
 
-// ── Converters ────────────────────────────────────────────────
-function convertUnits(){
-  const mph=parseFloat(document.getElementById('mph-in').value);
-  document.getElementById('kn-out').textContent=!isNaN(mph)?(mph*0.868976).toFixed(1)+' kn':'—';
-  const f=parseFloat(document.getElementById('f-in').value);
-  document.getElementById('c-out').textContent=!isNaN(f)?((f-32)*5/9).toFixed(1)+'°C':'—';
-  const est=document.getElementById('est-in').value;
-  if(est){const[hh,mm]=est.split(':').map(Number);document.getElementById('utc-out').textContent=String((hh+5)%24).padStart(2,'0')+':'+String(mm).padStart(2,'0')+' UTC';}
-  else document.getElementById('utc-out').textContent='—';
+// ── Converters (bidirectional) ────────────────────────────────
+function convSpeed(from){
+  const mph=document.getElementById('mph-in');
+  const kn=document.getElementById('kn-in');
+  if(from==='mph'){
+    const v=parseFloat(mph.value);
+    kn.value=!isNaN(v)?(v*0.868976).toFixed(2):'';
+  }else{
+    const v=parseFloat(kn.value);
+    mph.value=!isNaN(v)?(v/0.868976).toFixed(2):'';
+  }
+}
+
+function convTemp(from){
+  const f=document.getElementById('f-in');
+  const c=document.getElementById('c-in');
+  if(from==='f'){
+    const v=parseFloat(f.value);
+    c.value=!isNaN(v)?((v-32)*5/9).toFixed(1):'';
+  }else{
+    const v=parseFloat(c.value);
+    f.value=!isNaN(v)?(v*9/5+32).toFixed(1):'';
+  }
+}
+
+function convTime(from){
+  const et=document.getElementById('et-in');
+  const utc=document.getElementById('utc-in');
+  const offset=getETOffset(); // -4 EDT or -5 EST
+  if(from==='et'){
+    if(!et.value){utc.value='';return;}
+    const[hh,mm]=et.value.split(':').map(Number);
+    const uh=((hh-offset)+24)%24;
+    utc.value=String(uh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }else{
+    if(!utc.value){et.value='';return;}
+    const[hh,mm]=utc.value.split(':').map(Number);
+    const eh=((hh+offset)+24)%24;
+    et.value=String(eh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }
 }
 
 // ── PDF Export ────────────────────────────────────────────────
@@ -897,13 +940,13 @@ function exportPDF(){
   y+=6;
 
   secHdr('Sun Times & Lighting');
-  twoCol('Sunrise (EST)',m.sunrise,'Sunset (EST)',m.sunset);
+  twoCol('Sunrise (ET)',m.sunrise,'Sunset (ET)',m.sunset);
   twoCol('Morning civil twilight',m.mornTwilight,'Evening civil twilight',m.eveTwilight);
   if(m.lightingStart&&m.lightingEnd){
     doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);
     doc.text('Anti-collision lighting not required',ML,y);
     doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');
-    doc.text(`${m.lightingStart} EST – ${m.lightingEnd} EST`,ML+190,y);y+=14;
+    doc.text(`${m.lightingStart} ET – ${m.lightingEnd} ET`,ML+190,y);y+=14;
   }
   y+=6;
 
@@ -913,7 +956,7 @@ function exportPDF(){
   y+=6;
 
   secHdr('Site Time');
-  twoCol('Time on-site (EST)',m.timeOnSite,'Time off-site (EST)',m.timeOffSite);
+  twoCol('Time on-site (ET)',m.timeOnSite,'Time off-site (ET)',m.timeOffSite);
   if(m.timeOnSite&&m.timeOffSite)twoCol('Duration on-site',calcOnsiteDuration(m.timeOnSite,m.timeOffSite),'','');
   y+=6;
 
@@ -924,7 +967,7 @@ function exportPDF(){
     doc.setFillColor(230,241,251);doc.rect(ML,y-2,TW,14,'F');
     doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(24,95,165);
     const cols=[ML,ML+22,ML+140,ML+260,ML+330,ML+400,ML+460];
-    ['#','Takeoff','Landing','Launch (EST)','Land (EST)','Elapsed','Notes'].forEach((h,i)=>doc.text(h,cols[i],y+9));
+    ['#','Takeoff','Landing','Launch (ET)','Land (ET)','Elapsed','Notes'].forEach((h,i)=>doc.text(h,cols[i],y+9));
     y+=16;
     m.flights.forEach((f,i)=>{
       chkPg(20);
