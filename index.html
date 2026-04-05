@@ -52,11 +52,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .field-group{padding:12px 16px;border-bottom:0.5px solid var(--border);}
 .field-group:last-child{border-bottom:none;}
 .field-label{font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em;}
+.field-unit{font-size:10px;color:var(--text2);font-weight:400;margin-left:4px;text-transform:none;letter-spacing:0;}
 .field-input{width:100%;font-size:14px;padding:8px 10px;border:0.5px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg2);color:var(--text);font-family:inherit;}
 .field-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(55,138,221,0.15);}
+.field-input[readonly]{background:var(--bg3);color:var(--text2);cursor:default;}
 select.field-input{cursor:pointer;}
 textarea.field-input{resize:vertical;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.location-wrap{position:relative;}
+.location-results{position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--radius-sm);z-index:50;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:none;}
+.location-results.open{display:block;}
+.location-result-item{padding:10px 12px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:0.5px solid var(--border);}
+.location-result-item:last-child{border-bottom:none;}
+.location-result-item:hover,.location-result-item:active{background:var(--bg3);}
+.location-loading{padding:10px 12px;font-size:13px;color:var(--text2);}
+.auto-badge{font-size:10px;background:#EAF3DE;color:#27500A;border-radius:4px;padding:1px 5px;margin-left:6px;font-weight:600;}
+.lighting-card{background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px;margin-top:4px;}
+.lighting-label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;}
+.lighting-value{font-size:14px;font-weight:600;color:var(--text);}
+.lighting-sub{font-size:11px;color:var(--text2);margin-top:2px;}
 .flight-card{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;}
 .flight-header{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;background:var(--bg3);border-bottom:0.5px solid var(--border);}
 .flight-num{font-size:13px;font-weight:600;color:var(--text);}
@@ -116,6 +131,8 @@ textarea.field-input{resize:vertical;}
 .photo-thumb{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--bg3);cursor:pointer;}
 .photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
 .photo-del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.onsite-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px 16px;border-bottom:0.5px solid var(--border);}
+.onsite-row:last-child{border-bottom:none;}
 </style>
 </head>
 <body>
@@ -242,7 +259,7 @@ textarea.field-input{resize:vertical;}
     <div class="modal-sub">Link to your FAA license, insurance, manuals, or any reference</div>
     <div class="field-label" style="margin-bottom:4px">Label</div>
     <input class="field-input" id="doc-label" placeholder="e.g. FAA Part 107 Certificate" style="margin-bottom:10px">
-    <div class="field-label" style="margin-bottom:4px">URL (GitHub, Google Drive, Dropbox…)</div>
+    <div class="field-label" style="margin-bottom:4px">URL</div>
     <input class="field-input" id="doc-url" placeholder="https://…">
     <div class="modal-btns">
       <button class="btn-secondary" onclick="closeModal('modal-doc')">Cancel</button>
@@ -258,6 +275,153 @@ window.addEventListener('offline',()=>document.getElementById('offline-banner').
 if(!navigator.onLine)document.getElementById('offline-banner').style.display='block';
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
 
+// ── Airports database (OurAirports subset, inline) ────────────
+// We fetch from OurAirports CSV at runtime; fallback to empty
+let airportData=null;
+async function fetchAirports(){
+  if(airportData)return airportData;
+  try{
+    const r=await fetch('https://davidmegginson.github.io/ourairports-data/airports.csv');
+    const text=await r.text();
+    const lines=text.split('\n').slice(1);
+    airportData=lines.filter(l=>l.trim()).map(l=>{
+      const cols=parseCSVLine(l);
+      return{id:cols[1],type:cols[2],name:cols[3],lat:parseFloat(cols[4]),lon:parseFloat(cols[5])};
+    }).filter(a=>a.lat&&a.lon&&a.id);
+    return airportData;
+  }catch(e){return[];}
+}
+
+function parseCSVLine(line){
+  const result=[],re=/("(?:[^"]|"")*"|[^,]*),?/g;
+  let m;while((m=re.exec(line))!==null){if(m.index===re.lastIndex)re.lastIndex++;result.push(m[1].replace(/^"|"$/g,'').replace(/""/g,'"'));}
+  return result;
+}
+
+function haversineMiles(lat1,lon1,lat2,lon2){
+  const R=3958.8,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+async function findNearbyAirports(lat,lon){
+  const airports=await fetchAirports();
+  return airports.filter(a=>haversineMiles(lat,lon,a.lat,a.lon)<=5)
+    .sort((a,b)=>haversineMiles(lat,lon,a.lat,a.lon)-haversineMiles(lat,lon,b.lat,b.lon))
+    .map(a=>a.id).filter(id=>id&&id!=='0').join(', ')||'None within 5 miles';
+}
+
+// ── Sun times API ──────────────────────────────────────────────
+function addMinutes(timeStr,mins){
+  if(!timeStr||timeStr==='—')return'—';
+  const[h,m]=timeStr.split(':').map(Number);
+  const total=h*60+m+mins;
+  const nh=Math.floor(((total%1440)+1440)%1440/60);
+  const nm=((total%1440)+1440)%60;
+  return String(nh).padStart(2,'0')+':'+String(nm).padStart(2,'0');
+}
+
+// Convert UTC time string to EST (UTC-5)
+function utcToEST(utcStr){
+  if(!utcStr)return'—';
+  const[h,m]=utcStr.split(':').map(Number);
+  const estH=(h-5+24)%24;
+  return String(estH).padStart(2,'0')+':'+String(m).padStart(2,'0');
+}
+
+async function fetchSunTimes(lat,lon,date){
+  try{
+    const r=await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${date}&formatted=0`);
+    const d=await r.json();
+    if(d.status!=='OK')return null;
+    // Times come back as UTC ISO strings
+    const sunrise=utcToEST(d.results.sunrise.split('T')[1].slice(0,5));
+    const sunset=utcToEST(d.results.sunset.split('T')[1].slice(0,5));
+    // Civil twilight from API
+    const mCivil=utcToEST(d.results.civil_twilight_begin.split('T')[1].slice(0,5));
+    const eCivil=utcToEST(d.results.civil_twilight_end.split('T')[1].slice(0,5));
+    // Anti-collision window: sunrise+30 to sunset-30
+    const lightingStart=addMinutes(sunrise,30);
+    const lightingEnd=addMinutes(sunset,-30);
+    return{sunrise,sunset,mCivil,eCivil,lightingStart,lightingEnd};
+  }catch(e){return null;}
+}
+
+// ── Location search ────────────────────────────────────────────
+let locSearchTimer=null;
+let currentCoords=null;
+
+async function searchLocation(query){
+  if(!query||query.length<3)return[];
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`,{headers:{'Accept-Language':'en'}});
+    return await r.json();
+  }catch(e){return[];}
+}
+
+function onLocationInput(e){
+  const q=e.target.value;
+  clearTimeout(locSearchTimer);
+  const results=document.getElementById('location-results');
+  if(!q||q.length<3){results.classList.remove('open');return;}
+  results.innerHTML='<div class="location-loading">Searching…</div>';
+  results.classList.add('open');
+  locSearchTimer=setTimeout(async()=>{
+    const items=await searchLocation(q);
+    if(!items.length){results.innerHTML='<div class="location-loading">No results found</div>';return;}
+    results.innerHTML=items.map((item,i)=>`<div class="location-result-item" onclick="selectLocation(${i})">${item.display_name}</div>`).join('');
+    results._items=items;
+  },400);
+}
+
+async function selectLocation(idx){
+  const results=document.getElementById('location-results');
+  const item=results._items&&results._items[idx];
+  if(!item)return;
+  const input=document.getElementById('f-location');
+  // Use a shorter display name
+  const shortName=item.display_name.split(',').slice(0,3).join(',').trim();
+  input.value=shortName;
+  CM.location=shortName;
+  CM.locationLat=parseFloat(item.lat);
+  CM.locationLon=parseFloat(item.lon);
+  currentCoords={lat:CM.locationLat,lon:CM.locationLon};
+  results.classList.remove('open');
+  persist();
+  // Trigger auto-population
+  autoPopulateFromLocation();
+}
+
+async function autoPopulateFromLocation(){
+  if(!currentCoords||!CM.date)return;
+  const{lat,lon}=currentCoords;
+  // Show loading state
+  const sunFields=['f-sunrise','f-sunset','f-mcivil','f-ecivil'];
+  sunFields.forEach(id=>{const el=document.getElementById(id);if(el){el.value='Loading…';}});
+  const airEl=document.getElementById('f-airports');
+  if(airEl)airEl.value='Searching…';
+
+  // Fetch in parallel
+  const[sun,airports]=await Promise.all([
+    fetchSunTimes(lat,lon,CM.date),
+    findNearbyAirports(lat,lon)
+  ]);
+
+  if(sun){
+    CM.sunrise=sun.sunrise;
+    CM.sunset=sun.sunset;
+    CM.mornTwilight=sun.mCivil;
+    CM.eveTwilight=sun.eCivil;
+    CM.lightingStart=sun.lightingStart;
+    CM.lightingEnd=sun.lightingEnd;
+  }
+  CM.airports=airports;
+  persist();
+  // Re-render the log to show updated values
+  renderLog();
+}
+
+// ── Data ──────────────────────────────────────────────────────
 const CHECKLISTS=[
   {id:'premission',label:'Pre-Mission Checklist',subtitle:'Complete before leaving the office',items:[
     'Airport(s) notified','Location is OK to fly','Weather forecast OK',
@@ -318,11 +482,14 @@ function getDocs(){return load('dp_docs',DEFAULT_DOCS);}
 function getEmptyMission(){
   const p=getPilotDefaults(),ac=getAircraft(),today=new Date().toISOString().split('T')[0];
   return {id:Date.now().toString(),date:today,missionNum:'',location:'',
+    locationLat:null,locationLon:null,
     pilotName:p.name,pilotAddress:p.address,pilotCert:p.cert,pilotPhone:p.phone,
     visualObservers:'',airports:'',airspace:'',missionType:'',
     aircraft:ac.length?ac[0].name+(ac[0].cert?' — '+ac[0].cert:''):'',
-    maxAlt:'',mornTwilight:'',eveTwilight:'',missionDesc:'',missionNotes:'',
-    checks:{},flights:[],photos:[]};
+    maxAlt:'',sunrise:'',sunset:'',mornTwilight:'',eveTwilight:'',
+    lightingStart:'',lightingEnd:'',
+    timeOnSite:'',timeOffSite:'',
+    missionDesc:'',missionNotes:'',checks:{},flights:[],photos:[]};
 }
 
 let CM=null;
@@ -341,6 +508,7 @@ function switchTab(name,el){
   if(name==='settings')renderSettings();
 }
 
+// ── Checklist ─────────────────────────────────────────────────
 function getState(sid,idx){return(CM.checks&&CM.checks[sid+'_'+idx])||'unchecked';}
 function getProgress(sid){
   const sec=CHECKLISTS.find(s=>s.id===sid);
@@ -388,6 +556,7 @@ function cycleCheck(sid,idx){
   persist();renderChecklist();
 }
 
+// ── Flight Log ────────────────────────────────────────────────
 function buildSelect(id,opts,cur,onchange){
   let h=`<select class="field-input" id="${id}" onchange="${onchange}"><option value="">Select…</option>`;
   opts.forEach(o=>{h+=`<option ${cur===o?'selected':''}>${o}</option>`;});
@@ -413,55 +582,137 @@ function handleAcSel(){
   }else{CM.aircraft=el.value;persist();}
 }
 
+function calcOnsiteDuration(timeIn,timeOut){
+  if(!timeIn||!timeOut)return'';
+  const[h1,m1]=timeIn.split(':').map(Number),[h2,m2]=timeOut.split(':').map(Number);
+  let mins=(h2*60+m2)-(h1*60+m1);if(mins<0)mins+=1440;
+  const h=Math.floor(mins/60),m=mins%60;
+  return h>0?`${h}h ${m}m`:`${m}m`;
+}
+
 function renderLog(){
   const m=CM,el=document.getElementById('log-content');
   if(!el)return;
   const ac=getAircraft(),acL=ac.map(a=>a.name+(a.cert?' — '+a.cert:''));
   const mT=getMissionTypes(),aC=getAirspaceClasses();
   const photos=m.photos||[];
+  const hasCoords=m.locationLat&&m.locationLon;
+  const autoTag=hasCoords?'<span class="auto-badge">Auto</span>':'';
+  const onsiteDur=calcOnsiteDuration(m.timeOnSite,m.timeOffSite);
+
+  // Lighting window
+  let lightingHtml='';
+  if(m.lightingStart&&m.lightingEnd){
+    lightingHtml=`<div class="lighting-card">
+      <div class="lighting-label">Anti-collision lighting not required</div>
+      <div class="lighting-value">${m.lightingStart} EST – ${m.lightingEnd} EST</div>
+      <div class="lighting-sub">Outside this window, anti-collision lighting must be on</div>
+    </div>`;
+  }
+
   el.innerHTML=`
   <div class="section-card">
     <div class="section-header" style="cursor:default"><span class="section-title">Mission info</span><span class="badge-status ${m.missionNum?'badge-complete':'badge-draft'}">${m.missionNum?'Mission #'+m.missionNum:'Draft'}</span></div>
     <div class="field-group"><div class="field-label">Mission #</div><input class="field-input" id="f-mnum" value="${m.missionNum||''}" onchange="uf('missionNum')" placeholder="e.g. 026"></div>
     <div class="row2" style="padding:12px 16px;gap:8px">
-      <div><div class="field-label">Date</div><input type="date" class="field-input" id="f-date" value="${m.date||''}" onchange="uf('date')"></div>
-      <div><div class="field-label">Location</div><input class="field-input" id="f-location" value="${m.location||''}" onchange="uf('location')" placeholder="Field / site name"></div>
+      <div><div class="field-label">Date</div><input type="date" class="field-input" id="f-date" value="${m.date||''}" onchange="onDateChange()"></div>
+      <div><div class="field-label">Mission type</div>${buildSelect('f-mtype',mT,m.missionType||'',"handleSel('f-mtype','dp_mtypes','missionType')")}</div>
+    </div>
+    <div class="field-group">
+      <div class="field-label">Location</div>
+      <div class="location-wrap">
+        <input class="field-input" id="f-location" value="${m.location||''}" placeholder="Search for a location…" oninput="onLocationInput(event)" autocomplete="off">
+        <div class="location-results" id="location-results"></div>
+      </div>
+      ${hasCoords?`<div style="font-size:11px;color:var(--text2);margin-top:4px">📍 ${m.locationLat.toFixed(4)}, ${m.locationLon.toFixed(4)}</div>`:''}
+    </div>
+    <div class="field-group"><div class="field-label">Airspace</div>${buildSelect('f-airspace',aC,m.airspace||'',"handleSel('f-airspace','dp_airspace','airspace')")}</div>
+    <div class="field-group"><div class="field-label">Aircraft</div>${buildSelect('f-aircraft',acL,m.aircraft||'',"handleAcSel()")}</div>
+    <div class="row2" style="padding:12px 16px;gap:8px">
+      <div><div class="field-label">Max altitude (AGL)</div><input class="field-input" id="f-alt" value="${m.maxAlt||''}" onchange="uf('maxAlt')" placeholder="ft"></div>
+      <div><div class="field-label">Airports within 5mi ${autoTag}</div><input class="field-input" id="f-airports" value="${m.airports||''}" onchange="uf('airports')" placeholder="${hasCoords?'Auto-populated':'Select location first'}"></div>
     </div>
     <div class="field-group"><div class="field-label">Pilot name</div><input class="field-input" id="f-pilot" value="${m.pilotName||''}" onchange="uf('pilotName')"></div>
     <div class="field-group"><div class="field-label">Pilot cert #</div><input class="field-input" id="f-cert" value="${m.pilotCert||''}" onchange="uf('pilotCert')"></div>
     <div class="field-group"><div class="field-label">Visual observer(s)</div><input class="field-input" id="f-vo" value="${m.visualObservers||''}" onchange="uf('visualObservers')" placeholder="Names"></div>
-    <div class="row2" style="padding:12px 16px;gap:8px">
-      <div><div class="field-label">Mission type</div>${buildSelect('f-mtype',mT,m.missionType||'',"handleSel('f-mtype','dp_mtypes','missionType')")}</div>
-      <div><div class="field-label">Airspace</div>${buildSelect('f-airspace',aC,m.airspace||'',"handleSel('f-airspace','dp_airspace','airspace')")}</div>
-    </div>
-    <div class="field-group"><div class="field-label">Aircraft</div>${buildSelect('f-aircraft',acL,m.aircraft||'',"handleAcSel()")}</div>
-    <div class="row2" style="padding:12px 16px;gap:8px">
-      <div><div class="field-label">Max altitude (AGL)</div><input class="field-input" id="f-alt" value="${m.maxAlt||''}" onchange="uf('maxAlt')" placeholder="ft"></div>
-      <div><div class="field-label">Airports within 5mi</div><input class="field-input" id="f-airports" value="${m.airports||''}" onchange="uf('airports')"></div>
-    </div>
-    <div class="row2" style="padding:12px 16px;gap:8px">
-      <div><div class="field-label">Morning civil twilight</div><input type="time" class="field-input" id="f-morn" value="${m.mornTwilight||''}" onchange="uf('mornTwilight')"></div>
-      <div><div class="field-label">Evening civil twilight</div><input type="time" class="field-input" id="f-eve" value="${m.eveTwilight||''}" onchange="uf('eveTwilight')"></div>
-    </div>
     <div class="field-group"><div class="field-label">Mission description</div><textarea class="field-input" id="f-desc" rows="2" onchange="uf('missionDesc')" placeholder="Route / objectives…">${m.missionDesc||''}</textarea></div>
   </div>
+
+  <div class="section-card">
+    <div class="section-header" style="cursor:default">
+      <span class="section-title">Sun times ${autoTag}</span>
+      <span style="font-size:11px;color:var(--text2)">${hasCoords?'Auto from location + date':'Select location to auto-fill'}</span>
+    </div>
+    <div class="row2" style="padding:12px 16px;gap:8px">
+      <div><div class="field-label">Sunrise <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-sunrise" value="${m.sunrise||''}" onchange="uf('sunrise');recalcLighting()"></div>
+      <div><div class="field-label">Sunset <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-sunset" value="${m.sunset||''}" onchange="uf('sunset');recalcLighting()"></div>
+    </div>
+    <div class="row2" style="padding:0 16px 12px;gap:8px">
+      <div><div class="field-label">Morning civil twilight <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-mcivil" value="${m.mornTwilight||''}" onchange="uf('mornTwilight')"></div>
+      <div><div class="field-label">Evening civil twilight <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-ecivil" value="${m.eveTwilight||''}" onchange="uf('eveTwilight')"></div>
+    </div>
+    <div style="padding:0 16px 12px">${lightingHtml||`<div class="lighting-card"><div class="lighting-label">Anti-collision lighting window</div><div class="lighting-value" style="color:var(--text2)">Select location and date to calculate</div></div>`}</div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-header" style="cursor:default"><span class="section-title">Site time</span>${onsiteDur?`<span style="font-size:12px;color:var(--accent);font-weight:600">${onsiteDur} on site</span>`:''}</div>
+    <div class="onsite-row">
+      <div><div class="field-label">Time on-site <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-timeon" value="${m.timeOnSite||''}" onchange="uf('timeOnSite');renderLog()"></div>
+      <div><div class="field-label">Time off-site <span class="field-unit">EST</span></div><input type="time" class="field-input" id="f-timeoff" value="${m.timeOffSite||''}" onchange="uf('timeOffSite');renderLog()"></div>
+      <div><div class="field-label">Duration</div><div class="field-input" style="background:var(--bg3);color:var(--text2);display:flex;align-items:center;">${onsiteDur||'—'}</div></div>
+    </div>
+  </div>
+
   <div class="section-card">
     <div class="section-header" style="cursor:default"><span class="section-title">Flight record</span><span style="font-size:12px;color:var(--text2)">${m.flights.length} flight${m.flights.length!==1?'s':''}</span></div>
     <div style="padding:12px" id="flights-container">${m.flights.map((f,i)=>renderFlightCard(f,i)).join('')}<button class="add-flight-btn" onclick="addFlight()">+ Add flight</button></div>
   </div>
+
   <div class="section-card">
     <div class="section-header" style="cursor:default"><span class="section-title">Mission photos</span><span style="font-size:12px;color:var(--text2)">${photos.length} photo${photos.length!==1?'s':''}</span></div>
     <div class="photo-grid">${photos.map((p,i)=>`<div class="photo-thumb" onclick="viewPhoto(${i})"><img src="${p.data}" alt="Photo ${i+1}"><button class="photo-del" onclick="event.stopPropagation();deletePhoto(${i})">✕</button></div>`).join('')}</div>
-    <div style="padding:0 16px 12px">
+    <div style="padding:${photos.length?'0':'10px'} 16px 12px">
       <input type="file" accept="image/*" multiple id="photo-input" style="display:none" onchange="addPhotos(this)">
-      <button class="btn-secondary" style="width:100%;font-size:13px;padding:8px;margin-top:${photos.length?'6px':'0'}" onclick="document.getElementById('photo-input').click()">+ Add photos</button>
+      <button class="btn-secondary" style="width:100%;font-size:13px;padding:8px" onclick="document.getElementById('photo-input').click()">+ Add photos</button>
     </div>
   </div>
+
   <div class="section-card">
     <div class="section-header" style="cursor:default"><span class="section-title">Mission notes</span></div>
     <div class="field-group"><textarea class="field-input" id="f-notes" rows="3" onchange="uf('missionNotes')" placeholder="General notes, observations…">${m.missionNotes||''}</textarea></div>
   </div>
   <div class="btn-row"><button class="btn-secondary" onclick="saveDraft()">Save draft</button><button class="btn-primary" onclick="completeMission()">Mark complete</button></div>`;
+
+  // Restore coords for location lookup
+  if(CM.locationLat&&CM.locationLon)currentCoords={lat:CM.locationLat,lon:CM.locationLon};
+
+  // Close location results on outside tap
+  document.addEventListener('click',closeLocationResults,{once:false});
+}
+
+function closeLocationResults(e){
+  const wrap=document.querySelector('.location-wrap');
+  if(wrap&&!wrap.contains(e.target)){
+    const r=document.getElementById('location-results');
+    if(r)r.classList.remove('open');
+  }
+}
+
+function onDateChange(){
+  const el=document.getElementById('f-date');
+  if(el)CM.date=el.value;
+  persist();
+  if(currentCoords&&CM.date)autoPopulateFromLocation();
+}
+
+function recalcLighting(){
+  const sunrise=CM.sunrise,sunset=CM.sunset;
+  if(sunrise&&sunset){
+    CM.lightingStart=addMinutes(sunrise,30);
+    CM.lightingEnd=addMinutes(sunset,-30);
+    persist();
+    renderLog();
+  }
 }
 
 function renderFlightCard(f,i){
@@ -474,10 +725,9 @@ function renderFlightCard(f,i){
         <div><div class="field-label">Landing location</div><input class="field-input" value="${f.landingLoc||''}" onchange="ufl(${i},'landingLoc',this.value)" placeholder="Location"></div>
       </div>
       <div class="row2" style="padding:0 16px 12px;gap:8px">
-        <div><div class="field-label">Launch time</div><input type="time" class="field-input" value="${f.launch||''}" onchange="uflTime(${i},'launch',this.value)"></div>
-        <div><div class="field-label">Landing time</div><input type="time" class="field-input" value="${f.landing||''}" onchange="uflTime(${i},'landing',this.value)"></div>
+        <div><div class="field-label">Launch <span class="field-unit">EST</span></div><input type="time" class="field-input" value="${f.launch||''}" onchange="uflTime(${i},'launch',this.value)"></div>
+        <div><div class="field-label">Landing <span class="field-unit">EST</span></div><input type="time" class="field-input" value="${f.landing||''}" onchange="uflTime(${i},'landing',this.value)"></div>
       </div>
-      <div style="padding:0 16px 12px"><div class="field-label">Battery level at landing (%)</div><input type="number" class="field-input" value="${f.battery||''}" onchange="ufl(${i},'battery',this.value)" placeholder="e.g. 32" min="0" max="100" style="width:100px"></div>
       <div style="padding:0 16px 12px"><div class="field-label">Flight notes</div><textarea class="field-input" rows="2" onchange="ufl(${i},'notes',this.value)" placeholder="Notes…">${f.notes||''}</textarea></div>
     </div>
   </div>`;
@@ -490,7 +740,7 @@ function calcElapsed(t1,t2){
   return Math.floor(mins/60)>0?`${Math.floor(mins/60)}h ${mins%60}m`:`${mins%60}m`;
 }
 
-const FM={missionNum:'f-mnum',date:'f-date',location:'f-location',pilotName:'f-pilot',pilotCert:'f-cert',visualObservers:'f-vo',missionType:'f-mtype',airspace:'f-airspace',aircraft:'f-aircraft',maxAlt:'f-alt',airports:'f-airports',mornTwilight:'f-morn',eveTwilight:'f-eve',missionDesc:'f-desc',missionNotes:'f-notes'};
+const FM={missionNum:'f-mnum',date:'f-date',location:'f-location',pilotName:'f-pilot',pilotCert:'f-cert',visualObservers:'f-vo',missionType:'f-mtype',airspace:'f-airspace',aircraft:'f-aircraft',maxAlt:'f-alt',airports:'f-airports',mornTwilight:'f-mcivil',eveTwilight:'f-ecivil',sunrise:'f-sunrise',sunset:'f-sunset',timeOnSite:'f-timeon',timeOffSite:'f-timeoff',missionDesc:'f-desc',missionNotes:'f-notes'};
 function uf(field){const el=document.getElementById(FM[field]);if(el&&el.value!=='__custom__')CM[field]=el.value;persist();}
 function ufl(idx,field,value){CM.flights[idx][field]=value;persist();}
 function uflTime(idx,field,value){
@@ -498,11 +748,12 @@ function uflTime(idx,field,value){
   const f=CM.flights[idx],badge=document.querySelector(`#fc-${idx} .elapsed-badge`);
   if(badge)badge.textContent=calcElapsed(f.launch,f.landing);
 }
-function addFlight(){CM.flights.push({takeoffLoc:'',landingLoc:'',launch:'',landing:'',battery:'',notes:''});persist();renderLog();setTimeout(()=>{const c=document.querySelectorAll('.flight-card');if(c.length)c[c.length-1].scrollIntoView({behavior:'smooth',block:'start'});},50);}
+function addFlight(){CM.flights.push({takeoffLoc:'',landingLoc:'',launch:'',landing:'',notes:''});persist();renderLog();setTimeout(()=>{const c=document.querySelectorAll('.flight-card');if(c.length)c[c.length-1].scrollIntoView({behavior:'smooth',block:'start'});},50);}
 function removeFlight(idx){CM.flights.splice(idx,1);persist();renderLog();}
 function saveDraft(){persist();alert('Mission saved.');}
 function completeMission(){persist();alert('Mission marked complete and saved.');renderMissions();}
 
+// ── Photos ────────────────────────────────────────────────────
 function addPhotos(input){
   const files=Array.from(input.files);if(!files.length)return;
   if(!CM.photos)CM.photos=[];
@@ -536,6 +787,7 @@ function viewPhoto(idx){
   ov.onclick=()=>ov.remove();document.body.appendChild(ov);
 }
 
+// ── Missions ──────────────────────────────────────────────────
 function renderMissions(){
   const ms=getMissions(),el=document.getElementById('missions-list');
   if(!el)return;
@@ -559,6 +811,7 @@ function deleteMission(id){
 }
 function updateTopBar(){const sub=document.getElementById('top-sub');if(sub)sub.textContent=(CM&&(CM.location||CM.missionNum))?(CM.location||'Mission')+(CM.missionNum?' · #'+CM.missionNum:''):'UAS Flight Log';}
 
+// ── Documents ─────────────────────────────────────────────────
 function renderDocs(){
   const docs=getDocs(),el=document.getElementById('docs-list');if(!el)return;
   if(!docs.length){el.innerHTML=`<div style="padding:14px 16px;font-size:13px;color:var(--text2)">No documents added yet.</div>`;return;}
@@ -572,6 +825,7 @@ function confirmAddDoc(){
 }
 function removeDoc(idx){const docs=getDocs();docs.splice(idx,1);store('dp_docs',docs);renderDocs();}
 
+// ── Settings ──────────────────────────────────────────────────
 function renderSettings(){
   const ac=getAircraft();
   document.getElementById('aircraft-count').textContent=ac.length+' aircraft';
@@ -603,6 +857,7 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.modal-backdrop').forEach(m=>{m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');});});
 
+// ── Converters ────────────────────────────────────────────────
 function convertUnits(){
   const mph=parseFloat(document.getElementById('mph-in').value);
   document.getElementById('kn-out').textContent=!isNaN(mph)?(mph*0.868976).toFixed(1)+' kn':'—';
@@ -613,6 +868,7 @@ function convertUnits(){
   else document.getElementById('utc-out').textContent='—';
 }
 
+// ── PDF Export ────────────────────────────────────────────────
 function exportPDF(){
   if(!window.jspdf){alert('PDF library not loaded. Please check your connection and try again.');return;}
   const{jsPDF}=window.jspdf;
@@ -625,30 +881,50 @@ function exportPDF(){
   if(CM.missionNum){doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('Mission #'+CM.missionNum,W-MR,36,{align:'right'});}
   doc.setFontSize(9);doc.setFont('helvetica','normal');doc.text('DronePoint, LLC',W-MR,50,{align:'right'});
   y=80;
+
   function secHdr(t){doc.setFillColor(240,240,236);doc.rect(ML,y,TW,18,'F');doc.setDrawColor(200,200,196);doc.rect(ML,y,TW,18,'S');doc.setFillColor(55,138,221);doc.rect(ML,y,3,18,'F');doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(26,26,26);doc.text(t.toUpperCase(),ML+10,y+12);y+=26;}
-  function twoCol(l1,v1,l2,v2){const hx=ML+TW/2+8;doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);doc.text(l1,ML,y);doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');doc.text(v1||'—',ML+110,y);doc.setFont('helvetica','normal');doc.setTextColor(102,102,102);doc.text(l2,hx,y);doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');doc.text(v2||'—',hx+110,y);y+=14;}
+  function twoCol(l1,v1,l2,v2){const hx=ML+TW/2+8;doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);doc.text(l1,ML,y);doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');doc.text(v1||'—',ML+110,y);if(l2){doc.setFont('helvetica','normal');doc.setTextColor(102,102,102);doc.text(l2,hx,y);doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');doc.text(v2||'—',hx+110,y);}y+=14;}
   function chkPg(n){if(y+n>750){doc.addPage();y=48;}}
+
   const m=CM;
+
   secHdr('Mission Information');
   twoCol('Date',m.date,'Location',m.location);
   twoCol('Mission type',m.missionType,'Airspace',m.airspace);
   twoCol('Aircraft',m.aircraft,'Max altitude (AGL)',m.maxAlt?m.maxAlt+' ft':'');
   twoCol('Airports within 5mi',m.airports,'','');
-  twoCol('Morning civil twilight',m.mornTwilight,'Evening civil twilight',m.eveTwilight);
   if(m.missionDesc){doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);doc.text('Description',ML,y);doc.setTextColor(26,26,26);doc.setFont('helvetica','normal');const ln=doc.splitTextToSize(m.missionDesc,TW-130);doc.text(ln,ML+130,y);y+=ln.length*12+4;}
   y+=6;
+
+  secHdr('Sun Times & Lighting');
+  twoCol('Sunrise (EST)',m.sunrise,'Sunset (EST)',m.sunset);
+  twoCol('Morning civil twilight',m.mornTwilight,'Evening civil twilight',m.eveTwilight);
+  if(m.lightingStart&&m.lightingEnd){
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(102,102,102);
+    doc.text('Anti-collision lighting not required',ML,y);
+    doc.setTextColor(26,26,26);doc.setFont('helvetica','bold');
+    doc.text(`${m.lightingStart} EST – ${m.lightingEnd} EST`,ML+190,y);y+=14;
+  }
+  y+=6;
+
   secHdr('Pilot Information');
   twoCol('Pilot name',m.pilotName,'Certificate #',m.pilotCert);
   twoCol('Phone',m.pilotPhone,'Visual observer(s)',m.visualObservers||'None');
   y+=6;
+
+  secHdr('Site Time');
+  twoCol('Time on-site (EST)',m.timeOnSite,'Time off-site (EST)',m.timeOffSite);
+  if(m.timeOnSite&&m.timeOffSite)twoCol('Duration on-site',calcOnsiteDuration(m.timeOnSite,m.timeOffSite),'','');
+  y+=6;
+
   chkPg(60);
   secHdr('Flight Record — '+m.flights.length+' Flight'+(m.flights.length!==1?'s':''));
   if(!m.flights.length){doc.setFont('helvetica','italic');doc.setFontSize(9);doc.setTextColor(150,150,150);doc.text('No flights logged.',ML,y);y+=16;}
   else{
     doc.setFillColor(230,241,251);doc.rect(ML,y-2,TW,14,'F');
     doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(24,95,165);
-    const cols=[ML,ML+22,ML+120,ML+230,ML+310,ML+390,ML+450];
-    ['#','Takeoff','Landing','Launch','Landing','Elapsed','Battery'].forEach((h,i)=>doc.text(h,cols[i],y+9));
+    const cols=[ML,ML+22,ML+140,ML+260,ML+330,ML+400,ML+460];
+    ['#','Takeoff','Landing','Launch (EST)','Land (EST)','Elapsed','Notes'].forEach((h,i)=>doc.text(h,cols[i],y+9));
     y+=16;
     m.flights.forEach((f,i)=>{
       chkPg(20);
@@ -656,12 +932,13 @@ function exportPDF(){
       doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(26,26,26);
       const el=calcElapsed(f.launch,f.landing);
       const tl=s=>s&&s.length>16?s.slice(0,15)+'…':s||'—';
-      [String(i+1),tl(f.takeoffLoc),tl(f.landingLoc),f.launch||'—',f.landing||'—',el,f.battery?f.battery+'%':'—'].forEach((v,j)=>doc.text(v,cols[j],y+9));
+      const note=f.notes?f.notes.slice(0,30)+(f.notes.length>30?'…':''):'';
+      [String(i+1),tl(f.takeoffLoc),tl(f.landingLoc),f.launch||'—',f.landing||'—',el,note].forEach((v,j)=>doc.text(v,cols[j],y+9));
       y+=14;
-      if(f.notes){doc.setFont('helvetica','italic');doc.setFontSize(7.5);doc.setTextColor(102,102,102);const nl=doc.splitTextToSize('Note: '+f.notes,TW-22);doc.text(nl,ML+22,y+8);y+=nl.length*10+4;}
     });
   }
   y+=8;
+
   chkPg(80);
   let tD=0,tA=0;CHECKLISTS.forEach(s=>{const p=getProgress(s.id);tD+=p.done;tA+=p.applicable;});
   const pct=tA>0?Math.round(tD/tA*100):0;
@@ -687,23 +964,48 @@ function exportPDF(){
     });
     y+=4;
   });
+
   if(m.missionNotes){chkPg(50);secHdr('Mission Notes');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(26,26,26);const nl=doc.splitTextToSize(m.missionNotes,TW);doc.text(nl,ML,y);y+=nl.length*13+8;}
+
   chkPg(70);y+=10;
   doc.setDrawColor(200,200,196);doc.line(ML,y,ML+TW,y);y+=16;
   doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(102,102,102);
   doc.text('Pilot signature',ML,y);doc.text('Date',ML+TW/2,y);y+=24;
   doc.setDrawColor(26,26,26);doc.line(ML,y,ML+200,y);doc.line(ML+TW/2,y,ML+TW/2+120,y);
+
+  // Photos
+  const photos=CM.photos||[];
+  if(photos.length){
+    doc.addPage();y=48;
+    secHdr('Mission Photos — '+photos.length+' Photo'+(photos.length!==1?'s':''));
+    const imgW=160,imgH=120,gap=12,perRow=3;
+    let col=0;
+    photos.forEach((p,i)=>{
+      chkPg(imgH+30);
+      const x=ML+col*(imgW+gap);
+      try{doc.addImage(p.data,'JPEG',x,y,imgW,imgH);
+        doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(102,102,102);
+        doc.text(doc.splitTextToSize('Photo '+(i+1)+(p.name?' — '+p.name.replace(/\.[^.]+$/,''):''),imgW)[0],x,y+imgH+9);
+      }catch(e){}
+      col++;if(col>=perRow){col=0;y+=imgH+24;}
+    });
+    if(col>0)y+=imgH+24;
+  }
+
+  // Footer on all pages
   const pc=doc.getNumberOfPages();
   for(let p=1;p<=pc;p++){doc.setPage(p);doc.setFillColor(55,138,221);doc.rect(0,760,W,32,'F');doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(255,255,255);doc.text('DronePoint, LLC',ML,776);doc.text('Page '+p+' of '+pc,W-MR,776,{align:'right'});}
+
   doc.save('DronePoint_Mission'+(m.missionNum?'_'+m.missionNum:'')+'_'+(m.date||'undated')+'.pdf');
 }
 
 document.getElementById('new-mission-btn').addEventListener('click',()=>{
-  CM=getEmptyMission();setCurrentId(CM.id);persist();updateTopBar();
+  CM=getEmptyMission();currentCoords=null;setCurrentId(CM.id);persist();updateTopBar();
   switchTab('checklist',document.querySelectorAll('.nav-tab')[0]);
 });
 loadCM();
 if(!CM.photos)CM.photos=[];
+if(CM.locationLat&&CM.locationLon)currentCoords={lat:CM.locationLat,lon:CM.locationLon};
 updateTopBar();
 renderChecklist();
 </script>
