@@ -1,9 +1,0 @@
-Place your PDFs in this folder.
-
-Suggested filenames (no spaces):
-- faa-cert.pdf
-- insurance.pdf
-- m3e-manual.pdf
-
-After uploading, link them in DronePoint under Tools → Documents using:
-https://yourusername.github.io/dronepoint/docs/filename.pdf
