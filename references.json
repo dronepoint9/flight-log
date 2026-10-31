@@ -1,0 +1,98 @@
+{
+  "version": "2026-10-31",
+  "pilots": [
+    {"name": "Nicholas Seres", "cert": "5104759", "phone": "716-491-4033", "recurrent_training": ""}
+  ],
+  "aircraft": [
+    {"name": "DJI M4E", "reg": "FA3NHH4RXK"},
+    {"name": "DJI M350 RTK", "reg": "1ZNHFD4010003L"},
+    {"name": "DJI Mini 4 Pro", "reg": "FA3TX3YPCC"}
+  ],
+  "mission_types": [
+    "Photogrammetry / Construction Progress Monitoring",
+    "Thermal / RGB Inspection",
+    "Photogrammetry / Photo / Video",
+    "Photo / Video for Marketing",
+    "LiDAR and Photogrammetry"
+  ],
+  "sites": [
+    {
+      "name": "Cider Solar",
+      "mission_name": "Cider Solar Week  of 15",
+      "location": "6588 Quaker Hill Road, Elba, NY 14058",
+      "lat": 43.09875, "lon": -78.19381,
+      "airspace": "Class G",
+      "airports": "Genesee County (GVQ)",
+      "aircraft": "DJI M4E",
+      "mission_type": "Photogrammetry / Construction Progress Monitoring",
+      "description": "Full site capture.",
+      "flights": [
+        {"name": "Array 23", "notes": "Pass 1 of 2. ", "alt": 358},
+        {"name": "Array 23", "notes": "Pass 2 of 2. ", "alt": 358},
+        {"name": "Array 18", "notes": "Pass 1 of 2. ", "alt": 323},
+        {"name": "Array 18", "notes": "Pass 2 of 2. ", "alt": 323},
+        {"name": "Array 24/25E/25W", "notes": "", "alt": 390},
+        {"name": "Array 22", "notes": "", "alt": 351},
+        {"name": "Array 3/5/4", "notes": "", "alt": 382},
+        {"name": "Array 17", "notes": "", "alt": 358},
+        {"name": "Array 16", "notes": "", "alt": 357},
+        {"name": "Array 15W/15E", "notes": "", "alt": 380},
+        {"name": "Array 2E/2W", "notes": "", "alt": 357},
+        {"name": "Array 1", "notes": "", "alt": 380},
+        {"name": "Array 12", "notes": "", "alt": 390},
+        {"name": "Array 11", "notes": "", "alt": 376},
+        {"name": "WLDY", "notes": "", "alt": 390},
+        {"name": "Array 14/13", "notes": "", "alt": 390},
+        {"name": "Array 6", "notes": "", "alt": 320},
+        {"name": "Array 19/SS", "notes": "", "alt": 390},
+        {"name": "Array 21/20", "notes": "", "alt": 390},
+        {"name": "Array 28", "notes": "", "alt": 356},
+        {"name": "Array 30", "notes": "", "alt": 372},
+        {"name": "Array 29", "notes": "", "alt": 390},
+        {"name": "Array 9/10", "notes": "", "alt": 385},
+        {"name": "Array 7/8", "notes": "", "alt": 383},
+        {"name": "Offices/Array 26/27", "notes": "", "alt": 390}
+      ]
+    },
+    {
+      "name": "TeraWulf Lake Mariner",
+      "mission_name": "TeraWulf Lake Mariner",
+      "location": "Hartland Road, Barker, NY 14012",
+      "lat": 43.358, "lon": -78.604,
+      "airspace": "Class G",
+      "airports": "N/A",
+      "aircraft": "DJI M350 RTK",
+      "mission_type": "Thermal / RGB Inspection",
+      "description": "Construction progress monitoring with thermal.",
+      "flights": [
+        {"name": "Pass 1", "notes": "", "alt": null},
+        {"name": "Pass 2", "notes": "", "alt": null}
+      ]
+    },
+    {
+      "name": "Burns Site",
+      "mission_name": "Burns Site",
+      "location": "Canaseraga, NY 14822",
+      "lat": 42.46, "lon": -77.78,
+      "airspace": "Class G",
+      "airports": "N/A",
+      "aircraft": "DJI M4E",
+      "mission_type": "Photogrammetry / Construction Progress Monitoring",
+      "description": "Construction progress monitoring.",
+      "flights": [
+        {"name": "Pass 1 of 1", "notes": "", "alt": 390}
+      ]
+    },
+    {
+      "name": "Welcome Solar",
+      "mission_name": "Welcome Solar",
+      "location": "Patton Road, Hartstown, PA",
+      "lat": 41.55, "lon": -80.38,
+      "airspace": "Class G",
+      "airports": "N/A",
+      "aircraft": "",
+      "mission_type": "Thermal / RGB Inspection",
+      "description": ""
+    }
+  ]
+}
