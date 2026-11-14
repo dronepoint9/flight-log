@@ -126,6 +126,22 @@ input[readonly]{opacity:0.5;}
 .export-btn:active{opacity:0.85;transform:scale(0.99);}
 .export-hint{font-size:11px;color:var(--text3);text-align:center;margin-top:8px;line-height:1.5;}
 
+/* BASE LOG */
+.base-hint{font-size:11px;color:var(--text3);margin-top:5px;line-height:1.4;}
+.base-hint.short{color:var(--amber);}
+input.need{border-color:rgba(239,159,39,0.7);}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;}
+.modal-bg.show{display:flex;}
+.modal{background:var(--navy2);border:1px solid var(--border2);border-radius:var(--radius);padding:18px;max-width:360px;width:100%;}
+.modal h3{font-size:15px;margin-bottom:8px;}
+.modal p{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:12px;}
+.modal label{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45;margin-bottom:14px;}
+.modal label input{width:20px;height:20px;flex-shrink:0;margin-top:1px;}
+.modal-btns{display:flex;gap:8px;}
+.modal-btns button{flex:1;padding:12px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--navy3);color:var(--text);font-family:var(--font);font-size:14px;font-weight:600;}
+.modal-btns button.go{background:var(--blue2);border-color:var(--blue2);}
+.modal-btns button:disabled{opacity:.4;}
+
 /* NO-REF WARNING */
 .ref-warn{
   font-size:12px;color:var(--amber);padding:8px 10px;
@@ -224,6 +240,17 @@ input[readonly]{opacity:0.5;}
         <label class="field-label">Mission Type</label>
         <select id="missionType"><option value="">Select type…</option></select>
       </div>
+      <div class="field field-row">
+        <div>
+          <label class="field-label">Base Log Start</label>
+          <input type="time" id="baseStart">
+        </div>
+        <div>
+          <label class="field-label">Base Log End</label>
+          <input type="time" id="baseEnd">
+        </div>
+      </div>
+      <div class="base-hint" id="baseHint" style="margin:-4px 0 12px;">Base log: 4 hr minimum</div>
       <div class="field">
         <label class="field-label">Description</label>
         <textarea id="desc" rows="2" placeholder="What was done, e.g. Full site capture."></textarea>
@@ -285,6 +312,12 @@ input[readonly]{opacity:0.5;}
 
 <div class="toast" id="toast"></div>
 
+<div class="modal-bg" id="baseModal"><div class="modal">
+  <h3>Base logged under 4 hours</h3>
+  <p id="baseModalMsg"></p>
+  <label><input type="checkbox" id="baseConfirm"><span>I confirm I understand the base was logged for less than the four-hour minimum.</span></label>
+  <div class="modal-btns"><button id="baseCancel">Go back</button><button class="go" id="baseGo" disabled>Export</button></div>
+</div></div>
 <script>
 // ── REFERENCES ────────────────────────────────────────────
 // Pilot, aircraft and mission types are read from the Hub (same origin).
@@ -384,12 +417,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     addFlight(false);
   }
 
-  ['missionName','siteName','airspace','location','desc','vo','waivers','notes','missionType','aircraft']
+  ['missionName','siteName','airspace','location','desc','vo','waivers','notes','missionType','aircraft','baseStart','baseEnd']
     .forEach(id => {
       const el = document.getElementById(id);
       el.addEventListener('input', saveDraft); el.addEventListener('change', saveDraft);
     });
     document.getElementById('airspace').addEventListener('change', airspaceHint);
+  ['baseStart','baseEnd'].forEach(id => ['input','change'].forEach(ev => document.getElementById(id).addEventListener(ev, baseHint)));
+  baseHint();
   document.getElementById('missionDate').addEventListener('change', () => {
     if (lastCoords) setTwilight(lastCoords.lat, lastCoords.lon);
     saveDraft();
@@ -616,6 +651,24 @@ function renderFlights() {
   });
 }
 
+// ── BASE LOG ──────────────────────────────────────────────
+const BASE_MIN = 240; // fixed four-hour minimum, in minutes
+function hm(t) { if (!/^\d{1,2}:\d{2}$/.test(t || '')) return null; const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+function fmt12(min) { min = ((min % 1440) + 1440) % 1440; const h = Math.floor(min / 60), m = min % 60;
+  return ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + ' ' + (h < 12 ? 'AM' : 'PM'); }
+// Minutes logged; an end earlier on the clock than the start means it ran past midnight.
+function baseDuration() { const s0 = hm(v('baseStart')), e0 = hm(v('baseEnd'));
+  return (s0 == null || e0 == null) ? null : ((e0 - s0) + 1440) % 1440; }
+function baseHint() {
+  const s0 = hm(v('baseStart')), e0 = hm(v('baseEnd')), el = document.getElementById('baseHint');
+  const endEl = document.getElementById('baseEnd'), dur = baseDuration();
+  let t = 'Base log: 4 hr minimum', short = false;
+  if (s0 != null) { const earliest = s0 + BASE_MIN; t = 'No earlier than ' + fmt12(earliest) + (earliest >= 1440 ? ' (next day)' : ''); }
+  if (dur != null) { short = dur < BASE_MIN; if (short) t += ' · logged ' + Math.floor(dur / 60) + ' hr ' + (dur % 60) + ' min, under the minimum'; }
+  el.textContent = t; el.className = 'base-hint' + (short ? ' short' : '');
+  endEl.classList.remove('need');
+}
+
 // ── DRAFT ─────────────────────────────────────────────────
 function gather() {
   const p = REFS.pilots[0];
@@ -628,7 +681,7 @@ function gather() {
     missionType: v('missionType'), desc: v('desc'), location: v('location'),
     twilight: document.getElementById('twilight').textContent,
     airports: document.getElementById('airports').textContent,
-    lastCoords, vo: v('vo'), waivers: v('waivers'), notes: v('notes'), flights,
+    lastCoords, baseStart: v('baseStart'), baseEnd: v('baseEnd'), vo: v('vo'), waivers: v('waivers'), notes: v('notes'), flights,
   };
 }
 function v(id) { return document.getElementById(id).value; }
@@ -639,11 +692,11 @@ function restoreDraft() {
   const d = lsGet(DRAFT_KEY); if (!d) return;
   setVal('siteName', d.site || '');
   selectByName('aircraft', REFS.aircraft, 'name', d.aircraft);
-  ['missionName','missionDate','airspace','missionType','desc','location','vo','waivers','notes']
+  ['missionName','missionDate','airspace','missionType','desc','location','vo','waivers','notes','baseStart','baseEnd']
     .forEach(id => { if (d[id] != null) setVal(id, d[id]); });
   if (d.twilight) document.getElementById('twilight').textContent = d.twilight;
   if (d.airports) document.getElementById('airports').textContent = d.airports;
-  airspaceHint();
+  airspaceHint(); baseHint();
   lastCoords = d.lastCoords || null;
   flights = (d.flights && d.flights.length ? d.flights : [blankFlight()]).map(normalizeFlight);
   renderFlights();
@@ -656,7 +709,7 @@ function restoreDraft() {
 function clearDraft() {
   if (!confirm('Clear this mission and start fresh? Export first if you have not.')) return;
   lsDel(DRAFT_KEY);
-  ['siteName','missionName','desc','location','notes'].forEach(id => setVal(id, ''));
+  ['siteName','missionName','desc','location','notes','baseStart','baseEnd'].forEach(id => setVal(id, '')); baseHint();
   document.getElementById('airspace').value = ''; airspaceHint();
   setVal('missionDate', localISODate(new Date()));
   setVal('vo', 'None'); setVal('waivers', 'N/A');
@@ -670,7 +723,29 @@ function clearDraft() {
 }
 
 // ── EXPORT ────────────────────────────────────────────────
+function askBaseConfirm(dur) {
+  return new Promise(res => {
+    const m = document.getElementById('baseModal'), c = document.getElementById('baseConfirm'), go = document.getElementById('baseGo'), no = document.getElementById('baseCancel');
+    document.getElementById('baseModalMsg').textContent = 'The base was logged for ' + Math.floor(dur / 60) + ' hr ' + (dur % 60) + ' min.';
+    c.checked = false; go.disabled = true; m.classList.add('show');
+    c.onchange = () => { go.disabled = !c.checked; };
+    const done = ok => { m.classList.remove('show'); res(ok); };
+    go.onclick = () => done(c.checked); no.onclick = () => done(false);
+  });
+}
+
 async function exportJSON() {
+  // Hard stop: no export without a base log start and end time.
+  const bs = document.getElementById('baseStart'), be = document.getElementById('baseEnd');
+  const miss = [!bs.value && bs, !be.value && be].filter(Boolean);
+  if (miss.length) {
+    miss.forEach(x => x.classList.add('need'));
+    miss[0].scrollIntoView({behavior:'smooth', block:'center'});
+    toast(!be.value ? 'Enter the base log end time to export' : 'Enter the base log start time to export');
+    return;
+  }
+  const baseDur = baseDuration(), baseShort = baseDur < BASE_MIN;
+  if (baseShort && !(await askBaseConfirm(baseDur))) return;
   const g = gather();
   const p = REFS.pilots[0];
   const gaps = [];
@@ -683,7 +758,7 @@ async function exportJSON() {
   if (gaps.length && !confirm(gaps.join('\n') + '\n\nExport anyway?')) return;
 
   const data = {
-    export_version: '2.1',
+    export_version: '2.2',
     exported_at: new Date().toISOString(),
     mission_date: g.missionDate,
     pilot: p ? {name:p.name, cert:p.cert||'', phone:p.phone||'', recurrent_training:p.recurrent_training||''} : {},
@@ -692,6 +767,7 @@ async function exportJSON() {
       aircraft: g.aircraft, registration: g.registration,
       mission_type: g.missionType, description: g.desc, airspace: g.airspace,
       twilight: g.twilight, airports: g.airports,
+      base_log: {start: g.baseStart, end: g.baseEnd, duration_min: baseDur, minimum_min: BASE_MIN, under_minimum: baseShort, under_minimum_confirmed: baseShort},
       visual_observer: g.vo || 'None', waivers: g.waivers || 'N/A', notes: g.notes,
     },
     // One entry per flight (takeoff to landing); chained missions are the lines inside it.
