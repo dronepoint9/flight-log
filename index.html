@@ -129,6 +129,9 @@ input[readonly]{opacity:0.5;}
 /* BASE LOG */
 input[type=time]{min-height:50px;-webkit-appearance:none;appearance:none;}
 .base-wrap{position:relative;}
+.nobase{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);margin:2px 0 12px;}
+.nobase input{width:20px;height:20px;flex-shrink:0;}
+#baseRow.off{opacity:.4;pointer-events:none;}
 #baseEnd.t-empty::-webkit-datetime-edit{opacity:0;}
 #baseEnd.t-empty::-webkit-calendar-picker-indicator{opacity:0;}
 .base-ph{position:absolute;left:12px;right:8px;top:0;bottom:0;display:flex;align-items:center;font-size:12px;color:var(--text3);pointer-events:none;white-space:nowrap;overflow:hidden;}
@@ -245,7 +248,8 @@ input.need{border-color:rgba(239,159,39,0.7);}
         <label class="field-label">Mission Type</label>
         <select id="missionType"><option value="">Select type…</option></select>
       </div>
-      <div class="field field-row">
+      <label class="nobase"><input type="checkbox" id="noBase"><span>No base needed for this mission</span></label>
+      <div class="field field-row" id="baseRow">
         <div>
           <label class="field-label">Base Log Start</label>
           <input type="time" id="baseStart">
@@ -427,8 +431,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const el = document.getElementById(id);
       el.addEventListener('input', saveDraft); el.addEventListener('change', saveDraft);
     });
+  document.getElementById('noBase').addEventListener('change', saveDraft);
     document.getElementById('airspace').addEventListener('change', airspaceHint);
-  ['baseStart','baseEnd'].forEach(id => ['input','change'].forEach(ev => document.getElementById(id).addEventListener(ev, baseHint)));
+  ['baseStart','baseEnd','noBase'].forEach(id => ['input','change'].forEach(ev => document.getElementById(id).addEventListener(ev, baseHint)));
   baseHint();
   document.getElementById('missionDate').addEventListener('change', () => {
     if (lastCoords) setTwilight(lastCoords.lat, lastCoords.lon);
@@ -665,6 +670,10 @@ function fmt12(min) { min = ((min % 1440) + 1440) % 1440; const h = Math.floor(m
 function baseDuration() { const s0 = hm(v('baseStart')), e0 = hm(v('baseEnd'));
   return (s0 == null || e0 == null) ? null : ((e0 - s0) + 1440) % 1440; }
 function baseHint() {
+  const nb = document.getElementById('noBase').checked;
+  document.getElementById('baseRow').classList.toggle('off', nb);
+  ['baseStart','baseEnd'].forEach(id => document.getElementById(id).disabled = nb);
+  if (nb) { document.getElementById('baseHint').style.display = 'none'; document.getElementById('baseEndPh').style.display = 'none'; return; }
   const s0 = hm(v('baseStart')), e0 = hm(v('baseEnd')), el = document.getElementById('baseHint');
   const endEl = document.getElementById('baseEnd'), dur = baseDuration();
   let ph = '4 hr minimum', t = '', short = false;
@@ -687,7 +696,7 @@ function gather() {
     missionType: v('missionType'), desc: v('desc'), location: v('location'),
     twilight: document.getElementById('twilight').textContent,
     airports: document.getElementById('airports').textContent,
-    lastCoords, baseStart: v('baseStart'), baseEnd: v('baseEnd'), vo: v('vo'), waivers: v('waivers'), notes: v('notes'), flights,
+    lastCoords, baseStart: v('baseStart'), baseEnd: v('baseEnd'), noBase: document.getElementById('noBase').checked, vo: v('vo'), waivers: v('waivers'), notes: v('notes'), flights,
   };
 }
 function v(id) { return document.getElementById(id).value; }
@@ -702,6 +711,7 @@ function restoreDraft() {
     .forEach(id => { if (d[id] != null) setVal(id, d[id]); });
   if (d.twilight) document.getElementById('twilight').textContent = d.twilight;
   if (d.airports) document.getElementById('airports').textContent = d.airports;
+  document.getElementById('noBase').checked = !!d.noBase;
   airspaceHint(); baseHint();
   lastCoords = d.lastCoords || null;
   flights = (d.flights && d.flights.length ? d.flights : [blankFlight()]).map(normalizeFlight);
@@ -715,7 +725,7 @@ function restoreDraft() {
 function clearDraft() {
   if (!confirm('Clear this mission and start fresh? Export first if you have not.')) return;
   lsDel(DRAFT_KEY);
-  ['siteName','missionName','desc','location','notes','baseStart','baseEnd'].forEach(id => setVal(id, '')); baseHint();
+  ['siteName','missionName','desc','location','notes','baseStart','baseEnd'].forEach(id => setVal(id, '')); document.getElementById('noBase').checked = false; baseHint();
   document.getElementById('airspace').value = ''; airspaceHint();
   setVal('missionDate', localISODate(new Date()));
   setVal('vo', 'None'); setVal('waivers', 'N/A');
@@ -742,15 +752,16 @@ function askBaseConfirm(dur) {
 
 async function exportJSON() {
   // Hard stop: no export without a base log start and end time.
+  const noBase = document.getElementById('noBase').checked;
   const bs = document.getElementById('baseStart'), be = document.getElementById('baseEnd');
-  const miss = [!bs.value && bs, !be.value && be].filter(Boolean);
+  const miss = noBase ? [] : [!bs.value && bs, !be.value && be].filter(Boolean);
   if (miss.length) {
     miss.forEach(x => x.classList.add('need'));
     miss[0].scrollIntoView({behavior:'smooth', block:'center'});
     toast(!be.value ? 'Enter the base log end time to export' : 'Enter the base log start time to export');
     return;
   }
-  const baseDur = baseDuration(), baseShort = baseDur < BASE_MIN;
+  const baseDur = noBase ? null : baseDuration(), baseShort = !noBase && baseDur < BASE_MIN;
   if (baseShort && !(await askBaseConfirm(baseDur))) return;
   const g = gather();
   const p = REFS.pilots[0];
@@ -773,7 +784,9 @@ async function exportJSON() {
       aircraft: g.aircraft, registration: g.registration,
       mission_type: g.missionType, description: g.desc, airspace: g.airspace,
       twilight: g.twilight, airports: g.airports,
-      base_log: {start: g.baseStart, end: g.baseEnd, duration_min: baseDur, minimum_min: BASE_MIN, under_minimum: baseShort, under_minimum_confirmed: baseShort},
+      base_log: noBase
+        ? {no_base: true, start: '', end: '', duration_min: null, minimum_min: BASE_MIN, under_minimum: false, under_minimum_confirmed: false}
+        : {no_base: false, start: g.baseStart, end: g.baseEnd, duration_min: baseDur, minimum_min: BASE_MIN, under_minimum: baseShort, under_minimum_confirmed: baseShort},
       visual_observer: g.vo || 'None', waivers: g.waivers || 'N/A', notes: g.notes,
     },
     // One entry per flight (takeoff to landing); chained missions are the lines inside it.
